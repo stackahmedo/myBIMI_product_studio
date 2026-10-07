@@ -632,6 +632,140 @@ class ProductStudioDataService {
     return product;
   }
 
+  async bulkImportProducts(
+    items: Array<{
+      productData: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'website_sync_status'>;
+      initialStock?: number;
+      shelfLocation?: string;
+      assignedStoreId?: StoreId | 'all';
+    }>,
+    operator = { name: 'Tohriyo', role: 'ADMIN' }
+  ): Promise<{
+    importedCount: number;
+    skippedCount: number;
+    errors: string[];
+    products: Product[];
+  }> {
+    const importedProducts: Product[] = [];
+    const errors: string[] = [];
+    let skippedCount = 0;
+    const now = new Date().toISOString();
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const p = item.productData;
+
+      if (!p.name || !p.name.trim()) {
+        errors.push(`Row ${i + 1}: English name is required.`);
+        skippedCount++;
+        continue;
+      }
+
+      // Generate SKU if missing
+      let sku = p.sku ? p.sku.trim() : '';
+      if (!sku) {
+        sku = `BIMI-${Date.now().toString(36).toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+      }
+
+      // Check unique SKU
+      const existingSku = this.products.some((prod) => prod.sku.toLowerCase() === sku.toLowerCase());
+      if (existingSku) {
+        errors.push(`Row ${i + 1} (${p.name}): SKU "${sku}" already exists in catalog.`);
+        skippedCount++;
+        continue;
+      }
+
+      // Generate barcode if missing
+      let barcode = p.barcode ? p.barcode.trim() : '';
+      if (!barcode) {
+        barcode = `49${Math.floor(10000000000 + Math.random() * 90000000000)}`;
+      }
+
+      const id = `prod-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      const newProduct: Product = {
+        ...p,
+        id,
+        sku,
+        barcode,
+        website_sync_status: 'synced',
+        last_synced_at: now,
+        created_at: now,
+        updated_at: now,
+      };
+
+      this.products.unshift(newProduct);
+      importedProducts.push(newProduct);
+
+      // Create store inventory
+      const initialStockQty = Math.max(0, Number(item.initialStock) || 0);
+      const targetStoreId = item.assignedStoreId || 'all';
+
+      this.stores.forEach((st) => {
+        const storeQty = targetStoreId === 'all' || targetStoreId === st.id ? initialStockQty : 0;
+        this.storeProducts.push({
+          id: `sp-${st.code.toLowerCase()}-${newProduct.id}`,
+          product_id: newProduct.id,
+          store_id: st.id,
+          retail_price: newProduct.base_retail_price,
+          stock_quantity: storeQty,
+          reserved_quantity: 0,
+          shelf_location: item.shelfLocation || 'Storage',
+          last_restocked_at: now,
+          updated_at: now,
+        });
+
+        if (storeQty > 0) {
+          this.stockMovements.unshift({
+            id: `sm-${Date.now()}-${st.code}-${Math.random().toString(36).slice(2, 5)}`,
+            product_id: newProduct.id,
+            product_name: newProduct.name,
+            sku: newProduct.sku,
+            store_id: st.id,
+            store_name: st.name,
+            type: 'received',
+            quantity_change: storeQty,
+            balance_after: storeQty,
+            reference_doc: 'BULK-IMPORT',
+            notes: `Bulk imported via spreadsheet intake by ${operator.name}`,
+            performed_by: operator.name,
+            created_at: now,
+          });
+        }
+      });
+    }
+
+    if (importedProducts.length > 0) {
+      this.persist();
+
+      this.addAuditEntry({
+        entity_type: 'product',
+        entity_id: `batch-${Date.now()}`,
+        action: 'create',
+        description: `Bulk imported ${importedProducts.length} product(s) into master catalog.`,
+        user_name: operator.name,
+        user_role: operator.role,
+      });
+
+      securityMonitoringService.recordDataEdit({
+        entity_type: 'product',
+        entity_id: `batch-${Date.now()}`,
+        entity_name: `Bulk Import (${importedProducts.length} items)`,
+        action: 'CREATE',
+        description: `Bulk imported ${importedProducts.length} product(s) into master catalog.`,
+        user_id: operator.name.toLowerCase(),
+        user_name: operator.name,
+        user_role: operator.role,
+      });
+    }
+
+    return {
+      importedCount: importedProducts.length,
+      skippedCount,
+      errors,
+      products: importedProducts,
+    };
+  }
+
   async updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
     const index = this.products.findIndex((p) => p.id === id);
     if (index === -1) throw new Error('Product not found');

@@ -23,6 +23,7 @@ import {
   ExternalLink,
   RefreshCw,
   AlertCircle,
+  UploadCloud,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { dataService } from '../services/dataService';
@@ -30,6 +31,7 @@ import { Product, Category, Brand, Supplier, StoreProduct, ProductStatus, Produc
 import { ProductDetail360 } from '../components/products/ProductDetail360';
 import { ProductFormModal } from '../components/products/ProductFormModal';
 import { DeleteConfirmModal } from '../components/products/DeleteConfirmModal';
+import { BulkImportModal } from '../components/products/BulkImportModal';
 import { BarcodeSvg } from '../components/common/BarcodeSvg';
 
 export const ProductsView: React.FC = () => {
@@ -96,6 +98,7 @@ export const ProductsView: React.FC = () => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -324,6 +327,14 @@ export const ProductsView: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsBulkImportOpen(true)}
+            className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <UploadCloud className="w-4 h-4 text-emerald-600" />
+            <span>Bulk Import</span>
+          </button>
+
           <button
             onClick={handleOpenAdd}
             className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-2xs transition-colors flex items-center gap-2 cursor-pointer"
@@ -987,6 +998,16 @@ export const ProductsView: React.FC = () => {
           setDeletingProduct(null);
         }}
         onConfirm={handleConfirmDelete}
+      />
+
+      {/* Bulk Import Modal */}
+      <BulkImportModal
+        isOpen={isBulkImportOpen}
+        onClose={() => setIsBulkImportOpen(false)}
+        categories={categories}
+        brands={brands}
+        suppliers={suppliers}
+        onImportSuccess={loadData}
       />
     </div>
   );
