@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp, NavTab } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
+import { securityMonitoringService } from '../../services/securityMonitoringService';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -39,6 +40,17 @@ interface NavItem {
 export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) => {
   const { activeTab, setActiveTab, stores, selectedStoreId } = useApp();
   const { role, profile, signOut } = useAuth();
+  const [pendingApprovalsCount, setPendingApprovalsCount] = React.useState(0);
+
+  React.useEffect(() => {
+    const checkPending = () => {
+      const pending = securityMonitoringService.getPendingAccounts();
+      setPendingApprovalsCount(pending.length);
+    };
+    checkPending();
+    const interval = setInterval(checkPending, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isTohriyo =
     profile?.username?.toLowerCase() === 'tohriyo' ||
@@ -56,7 +68,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
     { id: 'purchasing', label: 'Purchasing', icon: ShoppingCart, requiredRole: 'MANAGER' },
     { id: 'website-sync', label: 'Website Sync', icon: RefreshCw, badge: '1 Alert', badgeVariant: 'amber', requiredRole: 'ANY' },
     { id: 'reports', label: 'Reports', icon: BarChart3, requiredRole: 'MANAGER' },
-    { id: 'users', label: 'Users', icon: Users, requiredRole: 'ADMIN' },
+    {
+      id: 'users',
+      label: 'Users',
+      icon: Users,
+      badge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount} Approval` : undefined,
+      badgeVariant: 'amber',
+      requiredRole: 'ADMIN',
+    },
     { id: 'audit-log', label: 'Audit Log', icon: ScrollText, requiredRole: 'MANAGER' },
     { id: 'settings', label: 'Settings', icon: Settings, requiredRole: 'ADMIN' },
     ...(isTohriyo
@@ -65,7 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
             id: 'super-admin' as NavTab,
             label: 'Security & Monitor',
             icon: ShieldAlert,
-            badge: 'tohriyo',
+            badge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount} Pending` : 'tohriyo',
             badgeVariant: 'amber' as const,
             requiredRole: 'ADMIN' as const,
           },
