@@ -21,21 +21,78 @@ export const SupabaseStatusCard: React.FC = () => {
   const { addToast } = useApp();
   const config = getSupabaseConfig();
   const [copied, setCopied] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string; detail?: string } | null>(null);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedResult, setSeedResult] = useState<string | null>(null);
 
   const handleCopyEnv = () => {
     const text = `# Supabase Configuration for Product Studio
-VITE_SUPABASE_URL=https://your-project.supabase.co
-VITE_SUPABASE_ANON_KEY=your-anon-public-key`;
+VITE_SUPABASE_URL=${config.url || 'https://uxvcqphwjawgwmakhxci.supabase.co'}
+VITE_SUPABASE_ANON_KEY=sb_publishable_5SndaauFfQC8W2Al33WgyQ_bdKLEXK0`;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     addToast({
       type: 'info',
       title: 'Copied to Clipboard',
-      message: 'Paste environment variables into your .env file.',
+      message: 'Active Supabase keys copied. Paste into your environment variables.',
     });
+  };
+
+  const handleTestConnection = async () => {
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const { data, error } = await supabase.from('stores').select('id, code, name').limit(3);
+      if (!error) {
+        setTestResult({
+          ok: true,
+          message: 'Supabase Connected & Operational!',
+          detail: `Successfully connected to ${config.url}. Table 'stores' is active with ${data?.length ?? 0} record(s).`,
+        });
+        addToast({
+          type: 'success',
+          title: 'Supabase Connected',
+          message: 'PostgreSQL database is responding successfully.',
+        });
+      } else if (error.code === 'PGRST205' || error.message?.includes('schema cache') || error.message?.includes('Could not find')) {
+        setTestResult({
+          ok: false,
+          message: 'Supabase API Connected (Tables Pending Creation)',
+          detail: `API endpoint ${config.url} is reachable and authorized, but the 'stores' table does not exist yet. Please execute supabase/schema.sql in your Supabase SQL Editor.`,
+        });
+        addToast({
+          type: 'warning',
+          title: 'Database Schema Needed',
+          message: 'Run supabase/schema.sql in the Supabase SQL editor to create all 17 tables.',
+        });
+      } else {
+        setTestResult({
+          ok: false,
+          message: `Connection Error: ${error.message}`,
+          detail: `Error Code: ${error.code || 'UNKNOWN'}. Hint: ${error.hint || 'Check Supabase project settings and RLS policies.'}`,
+        });
+        addToast({
+          type: 'error',
+          title: 'Connection Error',
+          message: error.message,
+        });
+      }
+    } catch (err: any) {
+      setTestResult({
+        ok: false,
+        message: 'Network / Connection Failure',
+        detail: err.message || 'Unable to reach the Supabase endpoint.',
+      });
+      addToast({
+        type: 'error',
+        title: 'Connection Failed',
+        message: err.message || 'Network error reaching Supabase',
+      });
+    } finally {
+      setIsTesting(false);
+    }
   };
 
   const handleSeedSupabase = async () => {
@@ -140,7 +197,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key`;
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={handleTestConnection}
+            disabled={isTesting}
+            className="px-3 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 border border-emerald-600 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin' : ''}`} />
+            <span>{isTesting ? 'Testing...' : 'Test Connection'}</span>
+          </button>
           <button
             onClick={handleCopyEnv}
             className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
@@ -150,6 +215,26 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key`;
           </button>
         </div>
       </div>
+
+      {testResult && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+            testResult.ok
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-amber-50 border-amber-200 text-amber-900'
+          }`}
+        >
+          {testResult.ok ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-0.5">
+            <p className="font-bold">{testResult.message}</p>
+            {testResult.detail && <p className="text-[11px] opacity-90">{testResult.detail}</p>}
+          </div>
+        </div>
+      )}
 
       {/* Grid status overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 text-xs">
@@ -184,7 +269,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key`;
           </span>
           <div className="flex items-center gap-1.5 text-slate-900 font-semibold font-mono">
             <FileCode className="w-3.5 h-3.5 text-blue-600" />
-            <span>/src/db/schema.sql</span>
+            <span>supabase/schema.sql</span>
           </div>
           <span className="text-[10px] text-slate-400 block">
             Complete 17-table schema with UUIDs & RLS
