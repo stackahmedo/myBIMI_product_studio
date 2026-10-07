@@ -60,6 +60,7 @@ export const SuperAdminView: React.FC = () => {
   const [expandedCrashId, setExpandedCrashId] = useState<string | null>(null);
 
   const reloadData = () => {
+    securityMonitoringService.reconcilePendingFromEdits();
     setSessions(securityMonitoringService.getSessions());
     setActivities(securityMonitoringService.getActivities());
     setEdits(securityMonitoringService.getDataEdits());
@@ -69,16 +70,69 @@ export const SuperAdminView: React.FC = () => {
 
   useEffect(() => {
     reloadData();
-    const interval = setInterval(reloadData, 3000);
-    return () => clearInterval(interval);
+    const interval = setInterval(reloadData, 2000);
+    const handleUpdate = () => reloadData();
+    window.addEventListener('bimi_security_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('bimi_security_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
-  const pendingAccounts = allUsers.filter((u) => u.approval_status === 'PENDING');
+  const pendingAccounts = React.useMemo(() => {
+    const list = [...allUsers.filter((u) => u.approval_status === 'PENDING')];
+    // Also include any registration requests from edits that haven't been approved yet
+    edits.forEach((e) => {
+      if (
+        (e.entity_type === 'user' || e.description.includes('PENDING_APPROVAL')) &&
+        (e.user_role === 'APPLICANT' || e.description.includes('PENDING_APPROVAL'))
+      ) {
+        const username = (e.entity_name || '').trim().toLowerCase();
+        if (!username || username === 'tohriyo' || username === 'sachou') return;
+        const inUsers = allUsers.find((u) => u.username.toLowerCase() === username);
+        const inList = list.find((u) => u.username.toLowerCase() === username);
+        const isApproved =
+          inUsers?.approval_status === 'APPROVED' ||
+          edits.some(
+            (other) =>
+              other.entity_name.toLowerCase() === username &&
+              (other.description.toLowerCase().includes('approved') || other.action === 'ROLE_CHANGE') &&
+              new Date(other.timestamp) >= new Date(e.timestamp)
+          );
+        const isRejected =
+          inUsers?.approval_status === 'REJECTED' ||
+          edits.some(
+            (other) =>
+              other.entity_name.toLowerCase() === username &&
+              other.description.toLowerCase().includes('rejected') &&
+              new Date(other.timestamp) >= new Date(e.timestamp)
+          );
 
-  const handleApprovePendingUser = (userId: string, targetUser: UserAccount, assignedRole?: AppRole) => {
+        if (!inList && !isApproved && !isRejected) {
+          list.push({
+            id: e.entity_id || `usr-${username}`,
+            username: username,
+            name: e.user_name || username,
+            email: `${username}@mybimi.jp`,
+            passwordHash: 'Kurosaki123',
+            role: 'STORE_STAFF',
+            is_active: false,
+            approval_status: 'PENDING',
+            requested_at: e.timestamp,
+            created_at: e.timestamp,
+          });
+        }
+      }
+    });
+    return list;
+  }, [allUsers, edits]);
+
+  const handleApprovePendingUser = (userIdOrUsername: string, targetUser: UserAccount, assignedRole?: AppRole) => {
     const approver = profile?.name || profile?.username || 'tohriyo';
-    const roleToGrant = assignedRole || pendingRoleMap[userId] || targetUser.role || 'STORE_STAFF';
-    const res = securityMonitoringService.approveAccount(userId, approver, roleToGrant);
+    const roleToGrant = assignedRole || pendingRoleMap[userIdOrUsername] || pendingRoleMap[targetUser.id] || targetUser.role || 'STORE_STAFF';
+    const res = securityMonitoringService.approveAccount(userIdOrUsername, approver, roleToGrant);
     if (res.success) {
       reloadData();
       addToast({
@@ -95,9 +149,9 @@ export const SuperAdminView: React.FC = () => {
     }
   };
 
-  const handleRejectPendingUser = (userId: string, targetUser: UserAccount) => {
+  const handleRejectPendingUser = (userIdOrUsername: string, targetUser: UserAccount) => {
     const approver = profile?.name || profile?.username || 'tohriyo';
-    const res = securityMonitoringService.rejectAccount(userId, approver);
+    const res = securityMonitoringService.rejectAccount(userIdOrUsername, approver);
     if (res.success) {
       reloadData();
       addToast({
@@ -715,60 +769,119 @@ export const SuperAdminView: React.FC = () => {
                   <p className="text-xs text-slate-600">{item.description}</p>
 
                   {/* Inline Approval Option for User Registration Requests */}
-                  {item.entity_type === 'user' && (() => {
+                  {(item.entity_type === 'user' ||
+                    item.description.includes('PENDING_APPROVAL') ||
+                    item.user_role === 'APPLICANT' ||
+                    item.description.toLowerCase().includes('user registration')) && (() => {
+                    const username = (item.entity_name || '').trim().toLowerCase();
                     const linkedUser = allUsers.find(
                       (u) =>
                         u.id === item.entity_id ||
-                        u.username.toLowerCase() === item.entity_name.toLowerCase()
+                        u.username.toLowerCase() === username
                     );
-                    const isPending =
-                      (linkedUser && linkedUser.approval_status === 'PENDING') ||
-                      item.description.includes('PENDING_APPROVAL');
 
-                    if (isPending && linkedUser) {
+                    // Check if there is a later edit showing this user was already approved
+                    const isLaterApproved = edits.some(
+                      (e) =>
+                        e.entity_type === 'user' &&
+                        e.entity_name.toLowerCase() === username &&
+                        (e.description.toLowerCase().includes('approved') || e.action === 'ROLE_CHANGE') &&
+                        new Date(e.timestamp) >= new Date(item.timestamp)
+                    );
+
+                    const isLaterRejected = edits.some(
+                      (e) =>
+                        e.entity_type === 'user' &&
+                        e.entity_name.toLowerCase() === username &&
+                        e.description.toLowerCase().includes('rejected') &&
+                        new Date(e.timestamp) >= new Date(item.timestamp)
+                    );
+
+                    const isApproved =
+                      linkedUser?.approval_status === 'APPROVED' ||
+                      (!linkedUser && isLaterApproved);
+
+                    const isRejected =
+                      linkedUser?.approval_status === 'REJECTED' ||
+                      (!linkedUser && isLaterRejected && !isApproved);
+
+                    const isPending =
+                      !isApproved &&
+                      !isRejected &&
+                      (linkedUser?.approval_status === 'PENDING' ||
+                        item.description.includes('PENDING_APPROVAL') ||
+                        item.user_role === 'APPLICANT');
+
+                    if (isPending) {
+                      const userObj: UserAccount = linkedUser || {
+                        id: item.entity_id || `usr-${username}`,
+                        username: username,
+                        name: item.user_name || username,
+                        email: `${username}@mybimi.jp`,
+                        passwordHash: 'Kurosaki123',
+                        role: 'STORE_STAFF',
+                        is_active: false,
+                        approval_status: 'PENDING',
+                        requested_at: item.timestamp,
+                        created_at: item.timestamp,
+                      };
+
+                      const currentRole = pendingRoleMap[userObj.id] || pendingRoleMap[username] || userObj.role || 'STORE_STAFF';
+
                       return (
-                        <div className="mt-2.5 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                          <div className="flex items-center gap-2">
-                            <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                        <div className="mt-3 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center shrink-0 font-bold shadow-xs">
+                              <Clock className="w-4 h-4 animate-pulse" />
+                            </div>
                             <div>
-                              <span className="font-bold text-xs text-amber-900 block">
-                                Account Approval Pending for @{linkedUser.username}
-                              </span>
-                              <span className="text-[11px] text-amber-700">
-                                Applicant: {linkedUser.name} · Role: {linkedUser.role} · Email: {linkedUser.email}
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-xs text-amber-950">
+                                  Action Required: Account Approval Pending
+                                </span>
+                                <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-amber-200/80 text-amber-900 border border-amber-300">
+                                  @{username}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-amber-800 block mt-0.5">
+                                Applicant: <strong>{userObj.name}</strong> · Requested Role: <strong>{userObj.role}</strong> · Email: {userObj.email}
                               </span>
                             </div>
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                             <select
-                              value={pendingRoleMap[linkedUser.id] || linkedUser.role || 'STORE_STAFF'}
-                              onChange={(e) =>
+                              value={currentRole}
+                              onChange={(e) => {
+                                const newRole = e.target.value as AppRole;
                                 setPendingRoleMap((prev) => ({
                                   ...prev,
-                                  [linkedUser.id]: e.target.value as AppRole,
-                                }))
-                              }
-                              className="text-xs font-semibold px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none"
+                                  [userObj.id]: newRole,
+                                  [username]: newRole,
+                                }));
+                              }}
+                              className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-amber-300 bg-white text-slate-800 focus:outline-none shadow-2xs"
                             >
-                              <option value="STORE_STAFF">STORE_STAFF</option>
-                              <option value="MANAGER">MANAGER</option>
-                              <option value="ADMIN">ADMIN</option>
+                              <option value="STORE_STAFF">STORE_STAFF (Tags/Stock)</option>
+                              <option value="MANAGER">MANAGER (Full Ops)</option>
+                              <option value="ADMIN">ADMIN (System Admin)</option>
                             </select>
 
                             <button
-                              onClick={() => handleApprovePendingUser(linkedUser.id, linkedUser)}
-                              className="px-3 py-1.5 bg-[#005A43] hover:bg-[#004735] text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                              type="button"
+                              onClick={() => handleApprovePendingUser(username, userObj, currentRole)}
+                              className="px-3.5 py-1.5 bg-[#005A43] hover:bg-[#004735] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                             >
-                              <Check className="w-3.5 h-3.5" />
+                              <Check className="w-4 h-4" />
                               <span>Approve Account</span>
                             </button>
 
                             <button
-                              onClick={() => handleRejectPendingUser(linkedUser.id, linkedUser)}
-                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                              type="button"
+                              onClick={() => handleRejectPendingUser(username, userObj)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                             >
-                              <X className="w-3.5 h-3.5" />
+                              <X className="w-4 h-4" />
                               <span>Reject</span>
                             </button>
                           </div>
@@ -776,13 +889,54 @@ export const SuperAdminView: React.FC = () => {
                       );
                     }
 
-                    if (linkedUser && linkedUser.approval_status === 'APPROVED') {
+                    if (isApproved) {
+                      const displayRole = linkedUser?.role || 'STORE_STAFF';
+                      const approverName = linkedUser?.approved_by || 'Admin';
                       return (
-                        <div className="mt-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span>
-                            Account @{linkedUser.username} is <strong>APPROVED & ACTIVE</strong> (Role: {linkedUser.role} · Approved by {linkedUser.approved_by || 'Admin'})
+                        <div className="mt-2 text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-200 flex items-center justify-between gap-2 shadow-2xs">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            <span>
+                              Account <strong>@{username}</strong> is <strong>APPROVED & ACTIVE</strong> (Authorized Role: <span className="font-mono font-bold text-emerald-900 bg-emerald-100 px-1.5 py-0.5 rounded">{displayRole}</span> · Authorized by {approverName})
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-emerald-600 bg-emerald-100/60 px-2 py-0.5 rounded">
+                            LOGIN ACTIVE
                           </span>
+                        </div>
+                      );
+                    }
+
+                    if (isRejected) {
+                      return (
+                        <div className="mt-2 text-[11px] font-semibold text-rose-800 bg-rose-50 px-3 py-2 rounded-xl border border-rose-200 flex items-center justify-between gap-2 shadow-2xs">
+                          <div className="flex items-center gap-2">
+                            <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                            <span>
+                              Account registration for <strong>@{username}</strong> was <strong>REJECTED</strong>.
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const userObj: UserAccount = linkedUser || {
+                                id: item.entity_id || `usr-${username}`,
+                                username: username,
+                                name: item.user_name || username,
+                                email: `${username}@mybimi.jp`,
+                                passwordHash: 'Kurosaki123',
+                                role: 'STORE_STAFF',
+                                is_active: false,
+                                approval_status: 'PENDING',
+                                requested_at: item.timestamp,
+                                created_at: item.timestamp,
+                              };
+                              handleApprovePendingUser(username, userObj, 'STORE_STAFF');
+                            }}
+                            className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-white border border-emerald-300 px-2 py-1 rounded cursor-pointer"
+                          >
+                            Re-approve Access
+                          </button>
                         </div>
                       );
                     }

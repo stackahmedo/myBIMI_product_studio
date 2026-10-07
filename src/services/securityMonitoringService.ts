@@ -190,9 +190,66 @@ class SecurityMonitoringService {
       this.dataEdits = this.loadStorage<DataEditRecord[]>(STORAGE_EDITS_KEY, []);
       this.crashLogs = this.loadStorage<CrashLogRecord[]>(STORAGE_CRASHES_KEY, []);
       this.isInitialized = true;
+
+      // Auto-reconcile any pending accounts present in edits or activities into this.users
+      this.reconcilePendingFromEdits();
     } catch {
       this.users = [...CORE_INITIAL_ACCOUNTS];
       this.isInitialized = true;
+    }
+  }
+
+  public notifyListeners() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bimi_security_updated'));
+    }
+  }
+
+  public reconcilePendingFromEdits() {
+    let changed = false;
+    this.dataEdits.forEach((edit) => {
+      if (
+        edit.entity_type === 'user' &&
+        (edit.description.includes('PENDING_APPROVAL') ||
+          edit.user_role === 'APPLICANT' ||
+          edit.action === 'CREATE')
+      ) {
+        const username = edit.entity_name.trim().toLowerCase();
+        if (!username || username === 'tohriyo' || username === 'sachou') return;
+        const existing = this.users.find((u) => u.username.toLowerCase() === username);
+        if (!existing) {
+          const wasApproved = this.dataEdits.some(
+            (e) =>
+              e.entity_type === 'user' &&
+              e.entity_name.toLowerCase() === username &&
+              (e.description.toLowerCase().includes('approved') || e.action === 'ROLE_CHANGE')
+          );
+          const wasRejected = this.dataEdits.some(
+            (e) =>
+              e.entity_type === 'user' &&
+              e.entity_name.toLowerCase() === username &&
+              (e.description.toLowerCase().includes('rejected') || e.action === 'DELETE')
+          );
+
+          this.users.push({
+            id: edit.entity_id || `usr-${username}`,
+            username: username,
+            name: edit.user_name || username,
+            email: `${username}@mybimi.jp`,
+            passwordHash: 'Kurosaki123',
+            role: 'STORE_STAFF',
+            is_active: wasApproved,
+            approval_status: wasRejected ? 'REJECTED' : wasApproved ? 'APPROVED' : 'PENDING',
+            requested_at: edit.timestamp,
+            created_at: edit.timestamp,
+          });
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      this.saveUsers();
     }
   }
 
@@ -208,6 +265,7 @@ class SecurityMonitoringService {
   private saveStorage<T>(key: string, data: T) {
     try {
       localStorage.setItem(key, JSON.stringify(data));
+      this.notifyListeners();
     } catch {
       // ignore
     }
@@ -617,26 +675,60 @@ class SecurityMonitoringService {
 
   public getPendingAccounts(): UserAccount[] {
     this.init();
+    this.reconcilePendingFromEdits();
     return this.users.filter((u) => u.approval_status === 'PENDING');
   }
 
   public approveAccount(
-    userId: string,
+    userIdOrUsername: string,
     approvedBy = 'sachou',
     assignedRole?: AppRole
-  ): { success: boolean; error?: string } {
+  ): { success: boolean; error?: string; user?: UserAccount } {
     this.init();
-    const user = this.users.find((u) => u.id === userId);
-    if (!user) return { success: false, error: 'User account request not found.' };
+    const query = userIdOrUsername.trim().toLowerCase();
+    let user = this.users.find(
+      (u) =>
+        u.id.toLowerCase() === query ||
+        u.username.toLowerCase() === query ||
+        u.email.toLowerCase() === query
+    );
 
-    const oldStatus = user.approval_status;
-    user.approval_status = 'APPROVED';
-    user.is_active = true;
-    user.approved_by = approvedBy;
-    user.approved_at = new Date().toISOString();
-    if (assignedRole) {
-      user.role = assignedRole;
+    // If user not yet in this.users, check if they exist in data edits or recover them
+    if (!user) {
+      const editRecord = this.dataEdits.find(
+        (e) =>
+          e.entity_type === 'user' &&
+          (e.entity_id.toLowerCase() === query ||
+            e.entity_name.toLowerCase() === query ||
+            e.description.toLowerCase().includes(`"${query}"`))
+      );
+
+      user = {
+        id: editRecord?.entity_id || `usr-${query}-${Date.now().toString(36)}`,
+        username: editRecord?.entity_name || query,
+        name: editRecord?.user_name || query,
+        email: `${query}@mybimi.jp`,
+        passwordHash: 'Kurosaki123',
+        role: assignedRole || 'STORE_STAFF',
+        is_active: true,
+        approval_status: 'APPROVED',
+        requested_at: editRecord?.timestamp || new Date().toISOString(),
+        approved_by: approvedBy,
+        approved_at: new Date().toISOString(),
+        created_at: editRecord?.timestamp || new Date().toISOString(),
+      };
+      this.users.push(user);
+    } else {
+      const oldStatus = user.approval_status;
+      user.approval_status = 'APPROVED';
+      user.is_active = true;
+      user.approved_by = approvedBy;
+      user.approved_at = new Date().toISOString();
+      if (assignedRole) {
+        user.role = assignedRole;
+      }
     }
+
     this.saveUsers();
 
     this.recordActivity({
@@ -652,26 +744,55 @@ class SecurityMonitoringService {
       entity_id: user.id,
       entity_name: user.username,
       action: 'UPDATE',
-      description: `User account "${user.username}" approved by ${approvedBy}. Role assigned: [${user.role}].`,
+      description: `User account "${user.username}" approved by ${approvedBy}. Role assigned: [${user.role}]. Status: APPROVED.`,
       user_id: approvedBy.toLowerCase(),
       user_name: approvedBy,
       user_role: 'APPROVER',
       diff: [
-        { field: 'approval_status', before: oldStatus || 'PENDING', after: 'APPROVED' },
+        { field: 'approval_status', before: 'PENDING', after: 'APPROVED' },
         { field: 'is_active', before: false, after: true },
       ],
     });
 
-    return { success: true };
+    return { success: true, user };
   }
 
-  public rejectAccount(userId: string, rejectedBy = 'sachou'): { success: boolean; error?: string } {
+  public rejectAccount(userIdOrUsername: string, rejectedBy = 'sachou'): { success: boolean; error?: string } {
     this.init();
-    const user = this.users.find((u) => u.id === userId);
-    if (!user) return { success: false, error: 'User account request not found.' };
+    const query = userIdOrUsername.trim().toLowerCase();
+    let user = this.users.find(
+      (u) =>
+        u.id.toLowerCase() === query ||
+        u.username.toLowerCase() === query ||
+        u.email.toLowerCase() === query
+    );
 
-    user.approval_status = 'REJECTED';
-    user.is_active = false;
+    if (!user) {
+      const editRecord = this.dataEdits.find(
+        (e) =>
+          e.entity_type === 'user' &&
+          (e.entity_id.toLowerCase() === query ||
+            e.entity_name.toLowerCase() === query ||
+            e.description.toLowerCase().includes(`"${query}"`))
+      );
+      user = {
+        id: editRecord?.entity_id || `usr-${query}-${Date.now().toString(36)}`,
+        username: editRecord?.entity_name || query,
+        name: editRecord?.user_name || query,
+        email: `${query}@mybimi.jp`,
+        passwordHash: 'Kurosaki123',
+        role: 'STORE_STAFF',
+        is_active: false,
+        approval_status: 'REJECTED',
+        requested_at: editRecord?.timestamp || new Date().toISOString(),
+        created_at: editRecord?.timestamp || new Date().toISOString(),
+      };
+      this.users.push(user);
+    } else {
+      user.approval_status = 'REJECTED';
+      user.is_active = false;
+    }
+
     this.saveUsers();
 
     this.recordActivity({
@@ -680,6 +801,18 @@ class SecurityMonitoringService {
       role: user.role,
       action: 'ACCOUNT_REJECTED',
       details: `Account registration for @${user.username} rejected by ${rejectedBy}.`,
+    });
+
+    this.recordDataEdit({
+      entity_type: 'user',
+      entity_id: user.id,
+      entity_name: user.username,
+      action: 'UPDATE',
+      description: `User registration request for "${user.username}" was rejected by ${rejectedBy}.`,
+      user_id: rejectedBy.toLowerCase(),
+      user_name: rejectedBy,
+      user_role: 'APPROVER',
+      diff: [{ field: 'approval_status', before: 'PENDING', after: 'REJECTED' }],
     });
 
     return { success: true };

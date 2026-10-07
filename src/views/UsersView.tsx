@@ -60,19 +60,29 @@ export const UsersView: React.FC = () => {
   const [assignedRolePending, setAssignedRolePending] = useState<Record<string, AppRole>>({});
 
   const loadUsers = () => {
+    securityMonitoringService.reconcilePendingFromEdits();
     const list = securityMonitoringService.getAllUsers();
     setUserList(list);
   };
 
   useEffect(() => {
     loadUsers();
+    const interval = setInterval(loadUsers, 2500);
+    const handleUpdate = () => loadUsers();
+    window.addEventListener('bimi_security_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('bimi_security_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
   }, []);
 
-  const handleApproveUser = (userId: string, targetUser: UserAccount, roleToGrant?: AppRole) => {
-    const finalRole = roleToGrant || assignedRolePending[userId] || targetUser.role || 'STORE_STAFF';
+  const handleApproveUser = (userIdOrUsername: string, targetUser: UserAccount, roleToGrant?: AppRole) => {
+    const finalRole = roleToGrant || assignedRolePending[userIdOrUsername] || assignedRolePending[targetUser.id] || targetUser.role || 'STORE_STAFF';
     const approverName = profile?.name || profile?.username || 'sachou';
 
-    const res = securityMonitoringService.approveAccount(userId, approverName, finalRole);
+    const res = securityMonitoringService.approveAccount(userIdOrUsername, approverName, finalRole);
     if (res.success) {
       loadUsers();
       addToast({
@@ -89,9 +99,9 @@ export const UsersView: React.FC = () => {
     }
   };
 
-  const handleRejectUser = (userId: string, targetUser: UserAccount) => {
+  const handleRejectUser = (userIdOrUsername: string, targetUser: UserAccount) => {
     const approverName = profile?.name || profile?.username || 'sachou';
-    const res = securityMonitoringService.rejectAccount(userId, approverName);
+    const res = securityMonitoringService.rejectAccount(userIdOrUsername, approverName);
     if (res.success) {
       loadUsers();
       addToast({
