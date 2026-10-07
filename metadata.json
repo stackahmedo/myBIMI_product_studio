@@ -1,0 +1,6 @@
+{
+  "name": "PRODUCT STUDIO by My BIMI",
+  "description": "Central product management system and multi-store inventory hub for My BIMI retail stores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
