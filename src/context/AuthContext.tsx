@@ -156,14 +156,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  const [failedAttempts, setFailedAttempts] = useState<number>(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+
   const signIn = async (usernameOrEmail: string, passwordAttempt: string): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
+
+    // Rate-limiting brute-force defense
+    if (lockedUntil && Date.now() < lockedUntil) {
+      const remainingSecs = Math.ceil((lockedUntil - Date.now()) / 1000);
+      const msg = `Too many failed login attempts. Account temporarily locked for ${remainingSecs} seconds.`;
+      setAuthError(msg);
+      return { success: false, error: msg };
+    }
+
     setIsLoading(true);
 
     try {
       // 1. Verify via primary Security Service (tohriyo / sachou / created users)
       const secResult = securityMonitoringService.verifyCredentials(usernameOrEmail, passwordAttempt);
       if (secResult.success && secResult.user) {
+        setFailedAttempts(0);
+        setLockedUntil(null);
         const appRole: AppRole =
           secResult.user.role === 'ADMIN' || secResult.user.role === 'super_admin'
             ? 'ADMIN'
@@ -212,7 +226,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      const errMsg = secResult.error || 'Invalid User ID or Password. Access denied.';
+      const newFailed = failedAttempts + 1;
+      setFailedAttempts(newFailed);
+      let errMsg = secResult.error || 'Invalid User ID or Password. Access denied.';
+      if (newFailed >= 5) {
+        setLockedUntil(Date.now() + 30000); // 30 second lock
+        errMsg = 'Too many failed login attempts. Temporarily locked for 30 seconds.';
+      }
+
       setAuthError(errMsg);
       setIsLoading(false);
       return { success: false, error: errMsg };

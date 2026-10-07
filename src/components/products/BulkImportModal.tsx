@@ -178,18 +178,34 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
   // Convert raw row keys to lowercase trimmed keys
   const normalizeRow = (rawRow: Record<string, any>): Record<string, any> => {
-    const clean: Record<string, any> = {};
+    const clean: Record<string, any> = Object.create(null);
     Object.keys(rawRow).forEach((key) => {
+      // Prototype pollution defense
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') return;
       const normalizedKey = key.trim().toLowerCase().replace(/[\s\-_]+/g, '');
+      if (normalizedKey === '__proto__' || normalizedKey === 'constructor' || normalizedKey === 'prototype') return;
       clean[normalizedKey] = rawRow[key];
     });
     return clean;
+  };
+
+  // Safe image URL protocol validator
+  const sanitizeImageUrl = (rawUrl?: string): string => {
+    if (!rawUrl) return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80';
+    const clean = String(rawUrl).trim();
+    if (/^https?:\/\//i.test(clean)) return clean;
+    return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80';
   };
 
   // Parse raw sheet data into typed product rows
   const processRawData = (rows: Record<string, any>[]) => {
     if (!rows || rows.length === 0) {
       setFetchError('The file or sheet is empty. Please provide data with column headers.');
+      return;
+    }
+
+    if (rows.length > 2500) {
+      setFetchError(`File contains ${rows.length} rows. Maximum allowed per batch is 2,500 rows to ensure browser stability.`);
       return;
     }
 
@@ -303,7 +319,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
           subcategory: 'General',
           description,
           internal_notes: `Bulk imported on ${new Date().toLocaleDateString()}`,
-          image_url: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80',
+          image_url: sanitizeImageUrl(n['imageurl'] || n['image'] || n['photo'] || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80'),
           country_of_origin,
           weight_volume,
           unit,
@@ -330,6 +346,21 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
   const handleFileChange = async (file: File) => {
     setSelectedFile(file);
     setFetchError(null);
+
+    // 1. File size validation (10 MB cap)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      setFetchError(`File size (${(file.size / (1024 * 1024)).toFixed(1)} MB) exceeds maximum allowed limit of 10 MB.`);
+      return;
+    }
+
+    // 2. Format validation
+    const lower = file.name.toLowerCase();
+    const isAllowedExt = lower.endsWith('.xlsx') || lower.endsWith('.xls') || lower.endsWith('.csv');
+    if (!isAllowedExt) {
+      setFetchError('Unsupported file format. Please upload an Excel (.xlsx, .xls) or CSV (.csv) spreadsheet.');
+      return;
+    }
 
     try {
       const buffer = await file.arrayBuffer();
