@@ -10,8 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Auth-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
-[![Cloudflare Pages](https://img.shields.io/badge/Cloudflare-Pages%20%26%20Workers-F38020?logo=cloudflare&logoColor=white)](https://pages.cloudflare.com/)
-[![Vercel](https://img.shields.io/badge/Vercel-Ready-000000?logo=vercel&logoColor=white)](https://vercel.com/)
+[![Vercel](https://img.shields.io/badge/Vercel-Production%20Deployment-000000?logo=vercel&logoColor=white)](https://vercel.com/)
 [![Developer](https://img.shields.io/badge/Developed%20By-AHMED%20FAIYAZ-005A36?style=flat&logo=github)](https://github.com/stackahmedo)
 
 <p align="center">
@@ -73,9 +72,9 @@ flowchart TD
         PrintEngine[Laser / Thermal Shelf Tag Printer]
     end
 
-    subgraph EdgeLayer [Cloudflare Edge & Global CDN]
-        Pages[Cloudflare Pages / Vercel\nReact 19 Vite SPA]
-        Worker[Edge API Proxy & Webhook Dispatcher]
+    subgraph EdgeLayer [Vercel Global Edge Network]
+        VercelApp[Vercel Serverless Edge\nReact 19 Vite SPA]
+        VercelEnv[Vercel Environment Variables\nVITE_SUPABASE_URL & ANON_KEY]
     end
 
     subgraph DatabaseLayer [Supabase Cloud Infrastructure]
@@ -91,12 +90,38 @@ flowchart TD
 
     Browser -->|Direct Client Queries via Anon Key| Postgres
     Browser -->|Print Shelf Talkers| PrintEngine
-    Pages -->|Edge API Mutation Sync| Worker
-    Worker -->|Authorized Catalog Publish| OnlineStore
-    Worker -->|Webhook Integration| POS
-    Pages -->|Authentication Requests| Auth
-    Pages -->|Media Assets| Storage
+    VercelApp -->|Authentication Requests| Auth
+    VercelApp -->|Media Assets| Storage
+    VercelApp -->|Authorized Catalog Publish| OnlineStore
+    VercelApp -->|Webhook Integration| POS
 ```
+
+---
+
+## ⚡ Run with Vercel & Supabase (Production Setup)
+
+Deploying **PRODUCT STUDIO by My BIMI** takes under 2 minutes:
+
+### 1. Import Repository in Vercel
+1. Go to [vercel.com/dashboard](https://vercel.com/dashboard) and click **Add New...** ➔ **Project**.
+2. Select **`myBIMI_product_studio`** from your GitHub repositories.
+3. Vercel automatically detects **Vite** (`npm run build`, output: `dist`).
+
+### 2. Configure Environment Variables
+In the **Environment Variables** section before deploying, add:
+
+| Key | Value | Description |
+| :--- | :--- | :--- |
+| `VITE_SUPABASE_URL` | `https://<your-project-id>.supabase.co` | Supabase API endpoint |
+| `VITE_SUPABASE_ANON_KEY` | `<your-supabase-anon-key>` | Public Anon Key |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | `<your-supabase-anon-key>` | Alternate Publishable Key |
+
+*(Select **Production**, **Preview**, and **Development**)*
+
+### 3. Deploy
+Click **Deploy**.
+- SPA routing is already pre-configured with [vercel.json](./vercel.json) to eliminate 404s on page refresh.
+- Your app is immediately live with HTTPS and global edge CDN caching.
 
 ---
 
@@ -106,15 +131,22 @@ The repository includes complete engineering and deployment documentation inside
 
 | Document | Description |
 | :--- | :--- |
+| ▲ **[Vercel + Supabase Setup](docs/VERCEL_SUPABASE_SETUP.md)** | Production deployment on Vercel, official Supabase integration, environment variables, and SPA rewrites. |
 | 🏛️ **[System Architecture](docs/SYSTEM_ARCHITECTURE.md)** | High-level architectural topology, layer breakdown, component interaction, and data flows. |
 | 📐 **[System Design](docs/SYSTEM_DESIGN.md)** | Complete 17-table ERD schema, domain models, design patterns, and RBAC matrix. |
 | 💻 **[Run Local Guide](docs/RUN_LOCAL_GUIDE.md)** | Quick start, npm scripts, demo accounts, feature walkthrough, and local troubleshooting. |
 | ⚙️ **[Setup Guidelines](docs/SETUP_GUIDELINES.md)** | Environment variable matrix, Supabase provisioning, and PostgreSQL DDL execution. |
-| ☁️ **[Cloudflare + Supabase Setup](docs/CLOUDFLARE_SUPABASE_SETUP.md)** | Cloudflare Pages deployment, Cloudflare Workers API proxy, custom domain DNS, and edge security. |
-| ▲ **[Vercel + Supabase Setup](docs/VERCEL_SUPABASE_SETUP.md)** | Vercel deployment, official Supabase integration, environment variables, and SPA rewrites. |
 
 ---
 
+## 👨‍💻 Author & Lead Architect
+
+**AHMED FAIYAZ**
+- **GitHub**: [@stackahmedo](https://github.com/stackahmedo)
+- **Role**: Lead Developer & Solutions Architect
+- **Project**: PRODUCT STUDIO by My BIMI
+
+---
 
 ## 📄 License & Copyright
 
