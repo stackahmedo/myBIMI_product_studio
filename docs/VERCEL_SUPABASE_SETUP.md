@@ -9,7 +9,7 @@ This guide details how to deploy and connect **PRODUCT STUDIO by My BIMI** on **
 ```mermaid
 flowchart LR
     subgraph VercelEdge [Vercel Global Edge Network]
-        SPA[React 19 Vite App\nproduct-studio.vercel.app]
+        SPA[React 19 Vite App\nmybimiproductstudio.vercel.app]
         VercelEnv[Vercel Environment Variables\nVITE_SUPABASE_URL\nVITE_SUPABASE_ANON_KEY]
     end
 
@@ -102,15 +102,16 @@ vercel --prod
 
 If your application uses Supabase Auth (email logins, password resets):
 1. In the **Supabase Dashboard**, go to **Authentication** ➔ **URL Configuration**.
-2. Set **Site URL** to your Vercel deployment URL:
+2. Set **Site URL** to your exact Vercel deployment URL:
    ```text
-   https://product-studio-by-my-bimi.vercel.app
+   https://mybimiproductstudio.vercel.app
    ```
    *(or your custom domain like `https://studio.mybimi.jp`)*
-3. In **Redirect URLs**, add wildcard support for preview branches:
+3. In **Redirect URLs**, add the allowed redirect paths:
    ```text
+   https://mybimiproductstudio.vercel.app/**
    https://*.vercel.app/**
-   https://product-studio-by-my-bimi.vercel.app/**
+   http://localhost:3000/**
    ```
 4. Click **Save**.
 

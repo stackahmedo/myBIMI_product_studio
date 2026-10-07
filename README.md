@@ -10,13 +10,15 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![Supabase](https://img.shields.io/badge/Supabase-Database%20%26%20Auth-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
-[![Vercel](https://img.shields.io/badge/Vercel-Production%20Deployment-000000?logo=vercel&logoColor=white)](https://vercel.com/)
+[![Vercel](https://img.shields.io/badge/Vercel-mybimiproductstudio.vercel.app-000000?logo=vercel&logoColor=white)](https://mybimiproductstudio.vercel.app)
 [![Developer](https://img.shields.io/badge/Developed%20By-AHMED%20FAIYAZ-005A36?style=flat&logo=github)](https://github.com/stackahmedo)
 
 <p align="center">
   <b>安心・ハラール (Halal & Quality) · 新鮮で美味しい (Fresh & Delicious) · Good Food Better Life</b>
   <br />
   Enterprise retail point-of-sale studio engineered specifically for <b>My BIMI HALAL 360 STORE</b> multi-branch supermarket operations in Tokyo, Japan.
+  <br /><br />
+  🚀 <b>Live Production URL:</b> <a href="https://mybimiproductstudio.vercel.app"><b>https://mybimiproductstudio.vercel.app</b></a>
 </p>
 
 </div>
