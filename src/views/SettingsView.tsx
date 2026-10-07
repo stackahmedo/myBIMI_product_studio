@@ -13,11 +13,12 @@ import {
 import { useApp } from '../context/AppContext';
 import { dataService } from '../services/dataService';
 import { SupabaseStatusCard } from '../components/database/SupabaseStatusCard';
+import { GDriveBackupCard } from '../components/admin/GDriveBackupCard';
 
 export const SettingsView: React.FC = () => {
   const { stores, reloadStores, triggerRefresh, addToast } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'stores' | 'tax' | 'supabase'>('stores');
+  const [activeSubTab, setActiveSubTab] = useState<'stores' | 'tax' | 'supabase' | 'gdrive'>('stores');
   const [copiedSql, setCopiedSql] = useState(false);
 
   // New store quick form
@@ -118,6 +119,19 @@ CREATE TABLE store_products (id TEXT PRIMARY KEY, product_id TEXT, store_id TEXT
           }`}
         >
           Supabase & Database Layer
+        </button>
+        <button
+          onClick={() => setActiveSubTab('gdrive')}
+          className={`pb-2.5 text-xs font-semibold px-2 transition-colors border-b-2 flex items-center gap-1.5 ${
+            activeSubTab === 'gdrive'
+              ? 'border-emerald-600 text-emerald-800'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <span>Google Drive Cloud Backup</span>
+          <span className="font-mono text-[9px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+            ADMIN
+          </span>
         </button>
       </div>
 
@@ -285,6 +299,13 @@ CREATE TABLE store_products (id TEXT PRIMARY KEY, product_id TEXT, store_id TEXT
       {activeSubTab === 'supabase' && (
         <div className="max-w-4xl">
           <SupabaseStatusCard />
+        </div>
+      )}
+
+      {/* Tab 4: Google Drive Automated Backup */}
+      {activeSubTab === 'gdrive' && (
+        <div className="max-w-4xl">
+          <GDriveBackupCard />
         </div>
       )}
     </div>

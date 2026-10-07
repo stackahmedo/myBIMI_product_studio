@@ -16,6 +16,9 @@ import {
   UserCheck,
   Power,
   RefreshCw,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -47,6 +50,15 @@ export const UsersView: React.FC = () => {
     profile?.is_super_admin === true ||
     (role === 'ADMIN' && profile?.name?.toLowerCase().includes('tohriyo'));
 
+  const canApprove =
+    role === 'ADMIN' ||
+    profile?.username?.toLowerCase() === 'sachou' ||
+    profile?.username?.toLowerCase() === 'tohriyo' ||
+    role === 'MANAGER' ||
+    profile?.is_super_admin;
+
+  const [assignedRolePending, setAssignedRolePending] = useState<Record<string, AppRole>>({});
+
   const loadUsers = () => {
     const list = securityMonitoringService.getAllUsers();
     setUserList(list);
@@ -55,6 +67,46 @@ export const UsersView: React.FC = () => {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  const handleApproveUser = (userId: string, targetUser: UserAccount, roleToGrant?: AppRole) => {
+    const finalRole = roleToGrant || assignedRolePending[userId] || targetUser.role || 'STORE_STAFF';
+    const approverName = profile?.name || profile?.username || 'sachou';
+
+    const res = securityMonitoringService.approveAccount(userId, approverName, finalRole);
+    if (res.success) {
+      loadUsers();
+      addToast({
+        type: 'success',
+        title: 'Account Approved',
+        message: `Account @${targetUser.username} has been approved by ${approverName} with role [${finalRole}]. User can now log in.`,
+      });
+    } else {
+      addToast({
+        type: 'error',
+        title: 'Approval Failed',
+        message: res.error || 'Failed to approve account.',
+      });
+    }
+  };
+
+  const handleRejectUser = (userId: string, targetUser: UserAccount) => {
+    const approverName = profile?.name || profile?.username || 'sachou';
+    const res = securityMonitoringService.rejectAccount(userId, approverName);
+    if (res.success) {
+      loadUsers();
+      addToast({
+        type: 'info',
+        title: 'Account Rejected',
+        message: `Account registration request for @${targetUser.username} has been rejected.`,
+      });
+    } else {
+      addToast({
+        type: 'error',
+        title: 'Action Failed',
+        message: res.error || 'Failed to reject account.',
+      });
+    }
+  };
 
   const handleRoleChange = (userId: string, newRole: AppRole, targetUser: UserAccount) => {
     if (targetUser.username.toLowerCase() === 'tohriyo' && newRole !== 'ADMIN') {
@@ -217,6 +269,112 @@ export const UsersView: React.FC = () => {
         </div>
       </div>
 
+      {/* Pending Account Approvals Section (Sachou or Admin) */}
+      {canApprove && (
+        <div className="bg-white border border-amber-200/90 rounded-2xl shadow-xs overflow-hidden">
+          <div className="p-4 bg-gradient-to-r from-amber-50/70 via-white to-amber-50/40 border-b border-amber-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                  <span>Pending Account Registrations</span>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                      userList.filter((u) => u.approval_status === 'PENDING').length > 0
+                        ? 'bg-amber-500 text-white'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {userList.filter((u) => u.approval_status === 'PENDING').length}
+                  </span>
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Accounts requesting operator access. Only <strong>Sachou (Manager)</strong> or{' '}
+                  <strong>Admin</strong> can approve them.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {userList.filter((u) => u.approval_status === 'PENDING').length === 0 ? (
+            <div className="p-4 text-xs text-slate-400 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span>No pending account registrations. All requested accounts are reviewed.</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-amber-100/60 p-3 sm:p-4 space-y-3">
+              {userList
+                .filter((u) => u.approval_status === 'PENDING')
+                .map((pending) => (
+                  <div
+                    key={pending.id}
+                    className="p-3.5 bg-amber-50/40 border border-amber-200/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-slate-900">{pending.name}</span>
+                        <span className="font-mono text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                          @{pending.username}
+                        </span>
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-100/90 text-amber-800 border border-amber-300">
+                          REQUESTED: {pending.role}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 flex items-center gap-2 flex-wrap">
+                        <span>{pending.email}</span>
+                        <span>•</span>
+                        <span>
+                          Applied:{' '}
+                          {pending.requested_at
+                            ? new Date(pending.requested_at).toLocaleString()
+                            : 'Recently'}
+                        </span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-center">
+                      <select
+                        value={assignedRolePending[pending.id] || pending.role || 'STORE_STAFF'}
+                        onChange={(e) =>
+                          setAssignedRolePending((prev) => ({
+                            ...prev,
+                            [pending.id]: e.target.value as AppRole,
+                          }))
+                        }
+                        className="text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 focus:outline-none"
+                      >
+                        <option value="STORE_STAFF">STORE_STAFF (Tags/Shelf)</option>
+                        <option value="MANAGER">MANAGER (Operations)</option>
+                        <option value="ADMIN">ADMIN (System Admin)</option>
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() => handleApproveUser(pending.id, pending)}
+                        className="px-3 py-1.5 bg-[#005A43] hover:bg-[#004735] text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs transition-colors cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Approve</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRejectUser(pending.id, pending)}
+                        className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>Reject</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Users Table */}
       <div className="bg-white border border-slate-200/80 rounded-xl shadow-2xs overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center justify-between">
@@ -275,6 +433,21 @@ export const UsersView: React.FC = () => {
                           CORE MANAGER
                         </span>
                       )}
+                      {u.approval_status === 'PENDING' && (
+                        <span className="font-mono text-[9px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                          PENDING APPROVAL
+                        </span>
+                      )}
+                      {u.approval_status === 'REJECTED' && (
+                        <span className="font-mono text-[9px] font-bold text-rose-800 bg-rose-100 px-1.5 py-0.5 rounded border border-rose-200">
+                          REJECTED
+                        </span>
+                      )}
+                      {u.approval_status === 'APPROVED' && !isCoreTohriyo && !isCoreSachou && (
+                        <span className="font-mono text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
+                          APPROVED
+                        </span>
+                      )}
                       {isSelf && (
                         <span className="font-mono text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold border border-emerald-200">
                           YOU (ACTIVE)
@@ -290,7 +463,13 @@ export const UsersView: React.FC = () => {
                       {u.last_login_at && (
                         <>
                           <span>•</span>
-                          <span>Last login: {new Date(u.last_login_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          <span>
+                            Last login:{' '}
+                            {new Date(u.last_login_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
                         </>
                       )}
                     </div>
@@ -299,6 +478,28 @@ export const UsersView: React.FC = () => {
 
                 {/* Role setup control & Status */}
                 <div className="flex items-center gap-3 self-end sm:self-center">
+                  {/* Quick Approve / Reject for Pending Accounts */}
+                  {u.approval_status === 'PENDING' && canApprove && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleApproveUser(u.id, u)}
+                        className="px-2.5 py-1 bg-[#005A43] hover:bg-[#004735] text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Check className="w-3 h-3" />
+                        <span>Approve</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRejectUser(u.id, u)}
+                        className="px-2 py-1 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-lg text-xs font-semibold flex items-center gap-1 border border-rose-200 cursor-pointer"
+                      >
+                        <X className="w-3 h-3" />
+                        <span>Reject</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* Role setup dropdown */}
                   <div className="flex flex-col items-end">
                     <label className="text-[9px] font-mono text-slate-400 uppercase tracking-wider mb-0.5">

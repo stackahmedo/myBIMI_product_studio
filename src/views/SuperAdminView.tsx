@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Play,
   FileText,
+  Cloud,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useApp } from '../context/AppContext';
@@ -32,12 +33,13 @@ import {
   DataEditRecord,
   CrashLogRecord,
 } from '../services/securityMonitoringService';
+import { GDriveBackupCard } from '../components/admin/GDriveBackupCard';
 
 export const SuperAdminView: React.FC = () => {
   const { profile } = useAuth();
   const { addToast } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'users' | 'edits' | 'crashes'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'edits' | 'crashes' | 'gdrive'>('users');
   const [sessions, setSessions] = useState<UserSessionRecord[]>([]);
   const [activities, setActivities] = useState<UserActivityRecord[]>([]);
   const [edits, setEdits] = useState<DataEditRecord[]>([]);
@@ -209,6 +211,18 @@ export const SuperAdminView: React.FC = () => {
           >
             <AlertTriangle className="w-4 h-4" />
             <span>Crash Error Log ({crashes.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('gdrive')}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center gap-2 cursor-pointer ${
+              activeTab === 'gdrive'
+                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/25'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Cloud className="w-4 h-4" />
+            <span>Google Drive Cloud Backup</span>
           </button>
         </div>
       </div>
@@ -612,6 +626,15 @@ export const SuperAdminView: React.FC = () => {
               })
             )}
           </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. GOOGLE DRIVE AUTOMATED CLOUD BACKUP */}
+      {/* ========================================================================= */}
+      {activeTab === 'gdrive' && (
+        <div className="space-y-6">
+          <GDriveBackupCard />
         </div>
       )}
     </div>

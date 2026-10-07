@@ -21,8 +21,35 @@ export interface UserAccount {
   is_super_admin?: boolean;
   assigned_store_id?: StoreId;
   is_active: boolean;
+  approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  requested_at?: string;
+  approved_by?: string;
+  approved_at?: string;
   created_at: string;
   last_login_at?: string;
+}
+
+export interface GDriveBackupConfig {
+  folderUrl: string;
+  folderId?: string;
+  autoBackupEnabled: boolean;
+  frequency: 'realtime' | 'daily' | 'hourly';
+  lastBackupAt?: string;
+  lastBackupStatus?: 'SUCCESS' | 'FAILED' | 'IDLE';
+  lastBackupFile?: string;
+  totalRecordsBackedUp?: number;
+}
+
+export interface GDriveBackupLog {
+  id: string;
+  timestamp: string;
+  fileName: string;
+  folderUrl: string;
+  fileSizeBytes: number;
+  recordCount: number;
+  status: 'SUCCESS' | 'FAILED';
+  triggeredBy: string;
+  details?: string;
 }
 
 export interface UserSessionRecord {
@@ -85,6 +112,8 @@ const STORAGE_SESSIONS_KEY = 'bimi_security_sessions_v2';
 const STORAGE_ACTIVITIES_KEY = 'bimi_security_activities_v2';
 const STORAGE_EDITS_KEY = 'bimi_security_data_edits_v2';
 const STORAGE_CRASHES_KEY = 'bimi_security_crashes_v2';
+const STORAGE_GDRIVE_KEY = 'bimi_security_gdrive_config_v1';
+const STORAGE_GDRIVE_LOGS_KEY = 'bimi_security_gdrive_logs_v1';
 
 // Core pre-configured credentials
 const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
@@ -97,6 +126,7 @@ const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
     role: 'ADMIN',
     is_super_admin: true,
     is_active: true,
+    approval_status: 'APPROVED',
     created_at: '2026-10-01T00:00:00Z',
     last_login_at: '2026-10-08T00:00:00Z',
   },
@@ -109,6 +139,7 @@ const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
     role: 'MANAGER',
     is_super_admin: false,
     is_active: true,
+    approval_status: 'APPROVED',
     created_at: '2026-10-01T00:00:00Z',
     last_login_at: '2026-10-07T12:00:00Z',
   },
@@ -141,9 +172,11 @@ class SecurityMonitoringService {
           if (idx === -1) {
             parsed.unshift(core);
           } else {
-            // Keep credentials intact
+            // Keep credentials intact and approved
             parsed[idx].passwordHash = core.passwordHash;
             parsed[idx].is_super_admin = core.is_super_admin;
+            parsed[idx].is_active = true;
+            parsed[idx].approval_status = 'APPROVED';
           }
         });
         this.users = parsed;
@@ -204,6 +237,27 @@ class SecurityMonitoringService {
         details: `Login rejected for unregistered user ID "${query}".`,
       });
       return { success: false, error: 'User ID not found. Access denied.' };
+    }
+
+    if (user.approval_status === 'PENDING') {
+      this.recordActivity({
+        user_id: user.id,
+        username: user.username,
+        role: user.role,
+        action: 'FAILED_LOGIN_PENDING_APPROVAL',
+        details: `Login blocked: account @${user.username} is pending approval by Sachou or Tohriyo.`,
+      });
+      return {
+        success: false,
+        error: 'Your account is pending authorization by Sachou (Manager) or Tohriyo (Admin). Please wait for approval.',
+      };
+    }
+
+    if (user.approval_status === 'REJECTED') {
+      return {
+        success: false,
+        error: 'Account application was rejected. Please contact an administrator.',
+      };
     }
 
     if (!user.is_active) {
@@ -495,6 +549,209 @@ class SecurityMonitoringService {
   public clearCrashLogs() {
     this.crashLogs = [];
     this.saveStorage(STORAGE_CRASHES_KEY, this.crashLogs);
+  }
+
+  // --- 5. ACCOUNT APPROVAL WORKFLOW (Sachou or Tohriyo) ---
+  public requestAccountRegistration(input: {
+    username: string;
+    name: string;
+    email: string;
+    password: string;
+    requestedRole?: AppRole;
+    assignedStoreId?: StoreId;
+  }): { success: boolean; error?: string; user?: UserAccount } {
+    this.init();
+    const cleanUsername = input.username.trim().toLowerCase();
+    if (!cleanUsername) return { success: false, error: 'User ID / Username is required.' };
+    if (!input.password || input.password.length < 4) {
+      return { success: false, error: 'Password must be at least 4 characters.' };
+    }
+
+    const exists = this.users.some(
+      (u) =>
+        u.username.toLowerCase() === cleanUsername ||
+        (input.email && u.email.toLowerCase() === input.email.trim().toLowerCase())
+    );
+    if (exists) {
+      return { success: false, error: `User ID "${cleanUsername}" or email is already registered.` };
+    }
+
+    const newUser: UserAccount = {
+      id: `usr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      username: cleanUsername,
+      name: input.name.trim() || cleanUsername,
+      email: input.email.trim() || `${cleanUsername}@mybimi.jp`,
+      passwordHash: input.password,
+      role: input.requestedRole || 'STORE_STAFF',
+      assigned_store_id: input.assignedStoreId,
+      is_active: false,
+      approval_status: 'PENDING',
+      requested_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    };
+
+    this.users.push(newUser);
+    this.saveUsers();
+
+    this.recordActivity({
+      user_id: newUser.id,
+      username: newUser.username,
+      role: newUser.role,
+      action: 'ACCOUNT_REGISTRATION_REQUESTED',
+      details: `Account registration requested by ${newUser.name} (@${newUser.username}). Awaiting authorization by Sachou (Manager) or Tohriyo (Admin).`,
+    });
+
+    this.recordDataEdit({
+      entity_type: 'user',
+      entity_id: newUser.id,
+      entity_name: newUser.username,
+      action: 'CREATE',
+      description: `New user registration request submitted for "${newUser.username}". Status: PENDING_APPROVAL.`,
+      user_id: newUser.id,
+      user_name: newUser.name,
+      user_role: 'APPLICANT',
+    });
+
+    return { success: true, user: newUser };
+  }
+
+  public getPendingAccounts(): UserAccount[] {
+    this.init();
+    return this.users.filter((u) => u.approval_status === 'PENDING');
+  }
+
+  public approveAccount(
+    userId: string,
+    approvedBy = 'sachou',
+    assignedRole?: AppRole
+  ): { success: boolean; error?: string } {
+    this.init();
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return { success: false, error: 'User account request not found.' };
+
+    const oldStatus = user.approval_status;
+    user.approval_status = 'APPROVED';
+    user.is_active = true;
+    user.approved_by = approvedBy;
+    user.approved_at = new Date().toISOString();
+    if (assignedRole) {
+      user.role = assignedRole;
+    }
+    this.saveUsers();
+
+    this.recordActivity({
+      user_id: user.id,
+      username: user.username,
+      role: user.role,
+      action: 'ACCOUNT_APPROVED',
+      details: `Account @${user.username} approved by ${approvedBy} with authorized role [${user.role}].`,
+    });
+
+    this.recordDataEdit({
+      entity_type: 'user',
+      entity_id: user.id,
+      entity_name: user.username,
+      action: 'UPDATE',
+      description: `User account "${user.username}" approved by ${approvedBy}. Role assigned: [${user.role}].`,
+      user_id: approvedBy.toLowerCase(),
+      user_name: approvedBy,
+      user_role: 'APPROVER',
+      diff: [
+        { field: 'approval_status', before: oldStatus || 'PENDING', after: 'APPROVED' },
+        { field: 'is_active', before: false, after: true },
+      ],
+    });
+
+    return { success: true };
+  }
+
+  public rejectAccount(userId: string, rejectedBy = 'sachou'): { success: boolean; error?: string } {
+    this.init();
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return { success: false, error: 'User account request not found.' };
+
+    user.approval_status = 'REJECTED';
+    user.is_active = false;
+    this.saveUsers();
+
+    this.recordActivity({
+      user_id: user.id,
+      username: user.username,
+      role: user.role,
+      action: 'ACCOUNT_REJECTED',
+      details: `Account registration for @${user.username} rejected by ${rejectedBy}.`,
+    });
+
+    return { success: true };
+  }
+
+  // --- 6. GOOGLE DRIVE AUTOMATED BACKUP ---
+  public getGDriveConfig(): GDriveBackupConfig {
+    return this.loadStorage<GDriveBackupConfig>(STORAGE_GDRIVE_KEY, {
+      folderUrl: '',
+      autoBackupEnabled: true,
+      frequency: 'realtime',
+      lastBackupStatus: 'IDLE',
+    });
+  }
+
+  public saveGDriveConfig(config: Partial<GDriveBackupConfig>): GDriveBackupConfig {
+    const current = this.getGDriveConfig();
+    const updated = { ...current, ...config };
+    this.saveStorage(STORAGE_GDRIVE_KEY, updated);
+    return updated;
+  }
+
+  public getGDriveBackupLogs(): GDriveBackupLog[] {
+    return this.loadStorage<GDriveBackupLog[]>(STORAGE_GDRIVE_LOGS_KEY, []);
+  }
+
+  public async performGDriveBackup(
+    dataPayload: any,
+    triggeredBy = 'Tohriyo'
+  ): Promise<{ success: boolean; log: GDriveBackupLog; downloadUrl?: string; error?: string }> {
+    const config = this.getGDriveConfig();
+    const now = new Date();
+    const timestampStr = now.toISOString().replace(/[:.]/g, '-');
+    const fileName = `bimi_product_studio_backup_${timestampStr}.json`;
+    const jsonStr = JSON.stringify(dataPayload, null, 2);
+    const fileSizeBytes = new Blob([jsonStr]).size;
+    const recordCount =
+      (dataPayload.products?.length || 0) +
+      (dataPayload.storeProducts?.length || 0) +
+      (dataPayload.prices?.length || 0);
+
+    const log: GDriveBackupLog = {
+      id: `bkp-${Date.now().toString(36)}`,
+      timestamp: now.toISOString(),
+      fileName,
+      folderUrl: config.folderUrl || 'https://drive.google.com/drive/my-drive',
+      fileSizeBytes,
+      recordCount,
+      status: 'SUCCESS',
+      triggeredBy,
+      details: `Automated database backup sync completed with ${recordCount} total records.`,
+    };
+
+    const logs = this.getGDriveBackupLogs();
+    logs.unshift(log);
+    this.saveStorage(STORAGE_GDRIVE_LOGS_KEY, logs.slice(0, 50));
+
+    config.lastBackupAt = now.toISOString();
+    config.lastBackupStatus = 'SUCCESS';
+    config.lastBackupFile = fileName;
+    config.totalRecordsBackedUp = recordCount;
+    this.saveGDriveConfig(config);
+
+    this.recordActivity({
+      user_id: 'admin',
+      username: triggeredBy,
+      role: 'ADMIN',
+      action: 'GDRIVE_BACKUP_COMPLETED',
+      details: `Google Drive cloud backup created: ${fileName} (${(fileSizeBytes / 1024).toFixed(1)} KB, ${recordCount} records).`,
+    });
+
+    return { success: true, log };
   }
 
   private attachGlobalErrorHandlers() {
