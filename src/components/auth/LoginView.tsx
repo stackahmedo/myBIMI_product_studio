@@ -62,16 +62,19 @@ export const LoginView: React.FC = () => {
       {/* Top Brand Bar */}
       <header className="relative z-10 p-6 sm:p-8 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white font-bold text-base flex items-center justify-center shadow-lg shadow-emerald-500/20">
-            B
+          <div className="bg-white/95 px-3 py-1.5 rounded-xl shadow-md border border-white/20 flex items-center">
+            <img
+              src="/product-studio-logo.png"
+              alt="Product STUDIO by My BIMI"
+              className="h-8 w-auto object-contain"
+            />
           </div>
           <div>
-            <h1 className="text-sm font-bold tracking-tight text-white flex items-center gap-1.5">
-              <span>PRODUCT STUDIO</span>
-              <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                PROD
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                OFFICIAL STUDIO
               </span>
-            </h1>
+            </div>
             <p className="text-[11px] text-slate-400 font-medium">by My BIMI · Central Operations</p>
           </div>
         </div>
@@ -86,14 +89,22 @@ export const LoginView: React.FC = () => {
       <main className="relative z-10 flex-1 flex items-center justify-center p-4 sm:p-6">
         <div className="w-full max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-7 sm:p-9 shadow-2xl shadow-black/60 relative">
           {/* Card Header */}
-          <div className="text-center space-y-2 mb-7">
-            <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700 text-emerald-400 flex items-center justify-center mx-auto shadow-inner">
-              <Lock className="w-5 h-5" />
+          <div className="text-center space-y-3 mb-7">
+            <div className="flex justify-center">
+              <div className="bg-white px-4 py-2.5 rounded-2xl shadow-lg border border-slate-200 inline-flex items-center justify-center">
+                <img
+                  src="/product-studio-logo.png"
+                  alt="Product STUDIO"
+                  className="h-12 w-auto object-contain"
+                />
+              </div>
             </div>
-            <h2 className="text-xl font-bold text-white tracking-tight">Restricted Login</h2>
-            <p className="text-xs text-slate-400 max-w-xs mx-auto">
-              Access is restricted to authorized operators only. Please authenticate with your User ID and password.
-            </p>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">Restricted Login</h2>
+              <p className="text-xs text-slate-400 max-w-xs mx-auto mt-1">
+                Access is restricted to authorized operators only. Please authenticate with your User ID and password.
+              </p>
+            </div>
           </div>
 
           {/* Error Banner */}

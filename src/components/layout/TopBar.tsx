@@ -85,6 +85,14 @@ export const TopBar: React.FC<TopBarProps> = ({
             <Menu className="w-5 h-5" />
           </button>
 
+          <div className="lg:hidden flex items-center shrink-0">
+            <img
+              src="/product-studio-logo.png"
+              alt="Product STUDIO"
+              className="h-7 w-auto object-contain max-w-[120px]"
+            />
+          </div>
+
           {/* Global Search Bar Button */}
           <button
             onClick={() => setIsSearchOpen(true)}

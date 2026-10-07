@@ -101,19 +101,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
         }`}
       >
         {/* Brand Lockup */}
-        <div className="h-16 px-5 flex items-center justify-between border-b border-slate-100">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
-                B
-              </div>
-              <span className="font-bold text-sm tracking-tight text-slate-900">
-                PRODUCT STUDIO
-              </span>
-            </div>
-            <span className="text-[11px] font-medium text-slate-400 pl-8">
-              by My BIMI
-            </span>
+        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <img
+              src="/product-studio-logo.png"
+              alt="Product STUDIO by My BIMI"
+              className="h-9 w-auto object-contain max-w-[170px]"
+            />
           </div>
 
           <button
