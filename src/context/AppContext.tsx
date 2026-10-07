@@ -14,7 +14,8 @@ export type NavTab =
   | 'reports'
   | 'users'
   | 'audit-log'
-  | 'settings';
+  | 'settings'
+  | 'super-admin';
 
 export interface ToastMessage {
   id: string;

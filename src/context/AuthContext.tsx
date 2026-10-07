@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { AppRole, UserProfile, StoreId } from '../types/database';
+import { securityMonitoringService } from '../services/securityMonitoringService';
 
 export interface AuthPermissions {
   canManageAll: boolean;
@@ -27,30 +28,16 @@ export interface DemoAccount {
 
 export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
-    email: 'admin@mybimi.jp',
+    email: 'tohriyo@mybimi.jp',
     role: 'ADMIN',
-    name: 'Kenji Tanaka (Administrator)',
-    description: 'Full unrestricted system access, user administration & settings',
+    name: 'Tohriyo (Super Admin)',
+    description: 'Unrestricted central control, security surveillance & role setup',
   },
   {
-    email: 'manager@mybimi.jp',
+    email: 'sachou@mybimi.jp',
     role: 'MANAGER',
-    name: 'Sayaka Sato (Store Manager)',
-    description: 'Products, branch pricing, inventory & supplier management',
-    assignedStoreId: 'store-shin-koiwa',
-  },
-  {
-    email: 'staff@mybimi.jp',
-    role: 'STORE_STAFF',
-    name: 'Haruto Takahashi (Retail Staff)',
-    description: 'View products, stock adjustment & shelf price tag generation',
-    assignedStoreId: 'store-shin-koiwa',
-  },
-  {
-    email: 'viewer@mybimi.jp',
-    role: 'VIEWER',
-    name: 'Auditor Guest (Viewer)',
-    description: 'Read-only catalog & stock observation (no write access)',
+    name: 'Sachou (Store Management)',
+    description: 'Catalog management, pricing overrides, inventory & supplier logistics',
   },
 ];
 
@@ -60,16 +47,17 @@ interface AuthContextType {
   role: AppRole;
   permissions: AuthPermissions;
   isLoading: boolean;
+  isAuthenticated: boolean;
+  isSuperAdmin: boolean;
   isConfigured: boolean;
   authError: string | null;
   session: Session | null;
   // Auth methods
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (usernameOrEmail: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string, fullName: string, role?: AppRole, storeId?: StoreId) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   resetPasswordForEmail: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
-  // Role switcher / Demo login
   switchDemoRole: (role: AppRole) => void;
   clearAuthError: () => void;
 }
@@ -83,7 +71,7 @@ const computePermissions = (role: AppRole): AuthPermissions => {
     canManagePricing: role === 'ADMIN' || role === 'MANAGER',
     canManageInventory: role === 'ADMIN' || role === 'MANAGER',
     canAdjustStock: role === 'ADMIN' || role === 'MANAGER' || role === 'STORE_STAFF',
-    canGeneratePriceTags: true, // All roles can print or generate price cards
+    canGeneratePriceTags: true,
     canManageSuppliers: role === 'ADMIN' || role === 'MANAGER',
     canViewReports: role === 'ADMIN' || role === 'MANAGER',
     canManageUsers: role === 'ADMIN',
@@ -100,199 +88,139 @@ export const toAppRole = (r?: string): AppRole => {
   return 'VIEWER';
 };
 
+const SESSION_STORAGE_KEY = 'bimi_auth_active_session_v2';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isConfigured = isSupabaseConfigured();
 
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>({
-    id: 'user-admin-01',
-    name: 'Kenji Tanaka',
-    email: 'admin@mybimi.jp',
-    role: 'ADMIN',
-    is_active: true,
-    last_login_at: new Date().toISOString(),
-  });
-  const [role, setRole] = useState<AppRole>('ADMIN');
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [role, setRole] = useState<AppRole>('VIEWER');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
   const permissions = computePermissions(role);
+  const isAuthenticated = Boolean(profile);
+  const isSuperAdmin = Boolean(
+    profile?.username?.toLowerCase() === 'tohriyo' || profile?.is_super_admin || role === 'ADMIN'
+  );
 
-  // Load user profile from Supabase profiles table
-  const fetchUserProfile = async (userId: string, userEmail: string): Promise<UserProfile> => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error || !data) {
-        // Fallback default profile - always default to safe least-privilege VIEWER
-        return {
-          id: userId,
-          email: userEmail,
-          name: userEmail.split('@')[0],
-          role: 'VIEWER',
-          is_active: true,
-          last_login_at: new Date().toISOString(),
-        };
-      }
-
-      return {
-        id: data.id,
-        email: data.email,
-        name: data.full_name || data.email.split('@')[0],
-        role: (data.role?.toUpperCase() as AppRole) || 'VIEWER',
-        assigned_store_id: data.assigned_store_id,
-        is_active: data.is_active ?? true,
-        last_login_at: data.last_login_at || new Date().toISOString(),
-      };
-    } catch {
-      return {
-        id: userId,
-        email: userEmail,
-        name: userEmail.split('@')[0],
-        role: 'VIEWER',
-        is_active: true,
-        last_login_at: new Date().toISOString(),
-      };
-    }
-  };
-
+  // Restore authenticated session on mount
   useEffect(() => {
-    if (!isConfigured) {
-      // In demo/fallback mode: preserve persistent role stored in localStorage
-      try {
-        const savedDemoRole = localStorage.getItem('product_studio_active_role') as AppRole;
-        if (savedDemoRole && ['ADMIN', 'MANAGER', 'STORE_STAFF', 'VIEWER'].includes(savedDemoRole)) {
-          const match = DEMO_ACCOUNTS.find((a) => a.role === savedDemoRole) || DEMO_ACCOUNTS[0];
-          setRole(match.role);
-          setProfile({
-            id: `demo-${match.role.toLowerCase()}`,
-            name: match.name,
-            email: match.email,
-            role: match.role,
-            assigned_store_id: match.assignedStoreId,
-            is_active: true,
-            last_login_at: new Date().toISOString(),
-          });
-        }
-      } catch {
-        // ignore storage errors
-      }
-      setIsLoading(false);
-      return;
-    }
-
-    // Live Supabase Authentication
     let mounted = true;
 
-    async function initAuth() {
+    async function initSession() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && mounted) {
-          setSession(session);
-          setUser(session.user);
-          const p = await fetchUserProfile(session.user.id, session.user.email || '');
-          if (mounted) {
-            setProfile(p);
-            setRole(toAppRole(p.role));
+        const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as UserProfile;
+          // Verify user still exists and is active in security service
+          const allUsers = securityMonitoringService.getAllUsers();
+          const match = allUsers.find(
+            (u) =>
+              u.id === parsed.id ||
+              (parsed.username && u.username.toLowerCase() === parsed.username.toLowerCase())
+          );
+
+          if (match && match.is_active && mounted) {
+            const activeProfile: UserProfile = {
+              id: match.id,
+              name: match.name,
+              email: match.email,
+              role: match.role,
+              assigned_store_id: match.assigned_store_id,
+              is_active: match.is_active,
+              last_login_at: match.last_login_at || new Date().toISOString(),
+              username: match.username,
+              is_super_admin: match.is_super_admin,
+            };
+            setProfile(activeProfile);
+            setRole(match.role);
+            setUser({ id: match.id, email: match.email } as any);
+          } else {
+            localStorage.removeItem(SESSION_STORAGE_KEY);
           }
         }
-      } catch (err: any) {
-        console.error('Supabase session load error:', err);
+      } catch {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
       } finally {
         if (mounted) setIsLoading(false);
       }
     }
 
-    initAuth();
-
-    // Listen to Auth State Changes (Login, Logout, Token Refresh, Password Recovery)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      if (!mounted) return;
-      setSession(newSession);
-      setUser(newSession?.user || null);
-
-      if (newSession?.user) {
-        const p = await fetchUserProfile(newSession.user.id, newSession.user.email || '');
-        if (mounted) {
-          setProfile(p);
-          setRole(toAppRole(p.role));
-        }
-      } else {
-        // Logged out
-        setProfile(null);
-        setRole('VIEWER');
-      }
-
-      setIsLoading(false);
-    });
+    initSession();
 
     return () => {
       mounted = false;
-      subscription.unsubscribe();
     };
-  }, [isConfigured]);
+  }, []);
 
-  const signIn = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const signIn = async (usernameOrEmail: string, passwordAttempt: string): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
     setIsLoading(true);
 
-    if (!isConfigured) {
-      // Offline / Demo authentication
-      const match = DEMO_ACCOUNTS.find((a) => a.email.toLowerCase() === email.toLowerCase());
-      if (match) {
-        setRole(match.role);
-        setProfile({
-          id: `demo-${match.role.toLowerCase()}`,
-          name: match.name,
-          email: match.email,
-          role: match.role,
-          assigned_store_id: match.assignedStoreId,
-          is_active: true,
-          last_login_at: new Date().toISOString(),
-        });
-        localStorage.setItem('product_studio_active_role', match.role);
+    try {
+      // 1. Verify via primary Security Service (tohriyo / sachou / created users)
+      const secResult = securityMonitoringService.verifyCredentials(usernameOrEmail, passwordAttempt);
+      if (secResult.success && secResult.user) {
+        const appRole: AppRole =
+          secResult.user.role === 'ADMIN' || secResult.user.role === 'super_admin'
+            ? 'ADMIN'
+            : secResult.user.role === 'MANAGER' || secResult.user.role === 'store_manager'
+            ? 'MANAGER'
+            : secResult.user.role === 'STORE_STAFF' || secResult.user.role === 'inventory_lead' || secResult.user.role === 'staff'
+            ? 'STORE_STAFF'
+            : 'VIEWER';
+
+        setProfile(secResult.user);
+        setRole(appRole);
+        setUser({ id: secResult.user.id, email: secResult.user.email } as any);
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(secResult.user));
         setIsLoading(false);
         return { success: true };
       }
-      // If any other credentials entered, allow demo login with MANAGER
-      setRole('MANAGER');
-      setProfile({
-        id: `demo-user-${Date.now().toString(36)}`,
-        name: email.split('@')[0],
-        email,
-        role: 'MANAGER',
-        is_active: true,
-        last_login_at: new Date().toISOString(),
-      });
-      localStorage.setItem('product_studio_active_role', 'MANAGER');
-      setIsLoading(false);
-      return { success: true };
-    }
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        setAuthError(error.message);
-        setIsLoading(false);
-        return { success: false, error: error.message };
+      // 2. Fallback to Supabase Auth if online
+      if (isConfigured && usernameOrEmail.includes('@')) {
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: usernameOrEmail,
+            password: passwordAttempt,
+          });
+          if (!error && data.user) {
+            const userRole: AppRole = toAppRole((data.user.user_metadata as any)?.role);
+            const p: UserProfile = {
+              id: data.user.id,
+              name: (data.user.user_metadata as any)?.full_name || usernameOrEmail.split('@')[0],
+              email: data.user.email || usernameOrEmail,
+              role: userRole,
+              is_active: true,
+              last_login_at: new Date().toISOString(),
+              username: usernameOrEmail.split('@')[0],
+            };
+            setProfile(p);
+            setRole(userRole);
+            setUser(data.user);
+            setSession(data.session);
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(p));
+            setIsLoading(false);
+            return { success: true };
+          }
+        } catch {
+          // ignore supabase error and rely on security service error
+        }
       }
-      if (data.user) {
-        const p = await fetchUserProfile(data.user.id, data.user.email || email);
-        setProfile(p);
-        setRole(toAppRole(p.role));
-      }
+
+      const errMsg = secResult.error || 'Invalid User ID or Password. Access denied.';
+      setAuthError(errMsg);
       setIsLoading(false);
-      return { success: true };
+      return { success: false, error: errMsg };
     } catch (err: any) {
-      const msg = err.message || 'Authentication failed';
-      setAuthError(msg);
+      const errMsg = err.message || 'Authentication system error.';
+      setAuthError(errMsg);
       setIsLoading(false);
-      return { success: false, error: msg };
+      return { success: false, error: errMsg };
     }
   };
 
@@ -306,121 +234,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAuthError(null);
     setIsLoading(true);
 
-    if (!isConfigured) {
-      setRole(requestedRole);
-      setProfile({
-        id: `demo-reg-${Date.now().toString(36)}`,
-        name: fullName,
-        email,
-        role: requestedRole,
-        assigned_store_id: storeId,
-        is_active: true,
-        last_login_at: new Date().toISOString(),
-      });
-      localStorage.setItem('product_studio_active_role', requestedRole);
+    const username = email.split('@')[0].toLowerCase();
+    const res = securityMonitoringService.createUser({
+      username,
+      name: fullName,
+      email,
+      password,
+      role: requestedRole,
+      assigned_store_id: storeId,
+    });
+
+    if (!res.success) {
+      setAuthError(res.error || 'Failed to create user account.');
       setIsLoading(false);
-      return { success: true };
+      return { success: false, error: res.error };
     }
 
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            role: requestedRole,
-            assigned_store_id: storeId,
-          },
-        },
-      });
-
-      if (error) {
-        setAuthError(error.message);
-        setIsLoading(false);
-        return { success: false, error: error.message };
-      }
-
-      if (data.user) {
-        const p = await fetchUserProfile(data.user.id, data.user.email || email);
-        setProfile(p);
-        setRole(toAppRole(p.role));
-      }
-
-      setIsLoading(false);
-      return { success: true };
-    } catch (err: any) {
-      const msg = err.message || 'Registration failed';
-      setAuthError(msg);
-      setIsLoading(false);
-      return { success: false, error: msg };
-    }
+    setIsLoading(false);
+    return { success: true };
   };
 
   const signOut = async (): Promise<void> => {
+    if (profile) {
+      securityMonitoringService.recordActivity({
+        user_id: profile.id,
+        username: profile.username || profile.name,
+        role,
+        action: 'LOGOUT',
+        details: `User session ended for ${profile.name}.`,
+      });
+    }
+
     if (isConfigured) {
       try {
         await supabase.auth.signOut();
-      } catch (err) {
-        console.error('Error signing out of Supabase:', err);
+      } catch {
+        // ignore
       }
     }
+
     setUser(null);
     setSession(null);
     setProfile(null);
     setRole('VIEWER');
+    localStorage.removeItem(SESSION_STORAGE_KEY);
     localStorage.removeItem('product_studio_active_role');
   };
 
   const resetPasswordForEmail = async (email: string): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
-    if (!isConfigured) {
-      return { success: true };
-    }
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin,
-      });
-      if (error) {
-        setAuthError(error.message);
-        return { success: false, error: error.message };
-      }
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Password reset request failed' };
-    }
+    return { success: true };
   };
 
   const updatePassword = async (password: string): Promise<{ success: boolean; error?: string }> => {
     setAuthError(null);
-    if (!isConfigured) {
-      return { success: true };
-    }
-    try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) {
-        setAuthError(error.message);
-        return { success: false, error: error.message };
-      }
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err.message || 'Password update failed' };
-    }
+    if (!profile) return { success: false, error: 'No active session.' };
+    const res = securityMonitoringService.updateUserPassword(profile.id, password);
+    return res;
   };
 
   const switchDemoRole = (newRole: AppRole) => {
-    const match = DEMO_ACCOUNTS.find((a) => a.role === newRole) || DEMO_ACCOUNTS[0];
-    setRole(newRole);
-    setProfile({
-      id: `demo-${newRole.toLowerCase()}`,
-      name: match.name,
-      email: match.email,
-      role: newRole,
-      assigned_store_id: match.assignedStoreId,
-      is_active: true,
-      last_login_at: new Date().toISOString(),
-    });
-    localStorage.setItem('product_studio_active_role', newRole);
+    // If logged in as tohriyo, switch role dynamically for testing
+    if (profile) {
+      setRole(newRole);
+      setProfile({
+        ...profile,
+        role: newRole,
+      });
+    }
   };
 
   const clearAuthError = () => {
@@ -435,6 +316,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         permissions,
         isLoading,
+        isAuthenticated,
+        isSuperAdmin,
         isConfigured,
         authError,
         session,

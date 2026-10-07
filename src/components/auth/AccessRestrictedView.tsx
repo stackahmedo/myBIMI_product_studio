@@ -1,8 +1,7 @@
 import React from 'react';
-import { ShieldAlert, ArrowLeft, KeyRound, Shield, CheckCircle2 } from 'lucide-react';
-import { useAuth, DEMO_ACCOUNTS } from '../../context/AuthContext';
+import { ShieldAlert, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
-import { AppRole } from '../../types/database';
 
 interface AccessRestrictedViewProps {
   requiredRole?: string;
@@ -13,7 +12,7 @@ export const AccessRestrictedView: React.FC<AccessRestrictedViewProps> = ({
   requiredRole = 'ADMIN or MANAGER',
   featureName = 'this management section',
 }) => {
-  const { role, switchDemoRole } = useAuth();
+  const { role } = useAuth();
   const { setActiveTab } = useApp();
 
   return (
@@ -53,23 +52,19 @@ export const AccessRestrictedView: React.FC<AccessRestrictedViewProps> = ({
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto py-2.5 px-6 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Return to Dashboard</span>
           </button>
-
-          <button
-            onClick={() => switchDemoRole('ADMIN')}
-            className="w-full py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>Elevate to ADMIN</span>
-          </button>
         </div>
+
+        <p className="text-[11px] text-slate-400">
+          Need access? Contact Super Administrator (<strong>@tohriyo</strong>) to adjust your role assignments.
+        </p>
       </div>
     </div>
   );

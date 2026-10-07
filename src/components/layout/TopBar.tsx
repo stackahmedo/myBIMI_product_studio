@@ -8,16 +8,15 @@ import {
   Check,
   Menu,
   Shield,
+  ShieldAlert,
   UserCheck,
-  Lock,
+  Users,
   LogOut,
-  KeyRound,
   Database,
   ExternalLink,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { useAuth, DEMO_ACCOUNTS } from '../../context/AuthContext';
-import { AuthModal } from '../auth/AuthModal';
+import { useAuth } from '../../context/AuthContext';
 import { AppRole } from '../../types/database';
 
 interface TopBarProps {
@@ -36,21 +35,19 @@ export const TopBar: React.FC<TopBarProps> = ({
     currentStore,
     setIsSearchOpen,
     setIsNotificationsOpen,
+    setActiveTab,
     addToast,
   } = useApp();
 
   const {
-    user,
     profile,
     role,
     isConfigured,
     signOut,
-    switchDemoRole,
   } = useAuth();
 
   const [isStoreDropdownOpen, setIsStoreDropdownOpen] = useState(false);
   const [isUserDropdownOpen, setIsUserDropdownOpen] = useState(false);
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   const roleBadgeColors: Record<AppRole, { bg: string; text: string; border: string }> = {
     ADMIN: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
@@ -59,15 +56,11 @@ export const TopBar: React.FC<TopBarProps> = ({
     VIEWER: { bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' },
   };
 
-  const handleRoleSelect = (newRole: AppRole) => {
-    switchDemoRole(newRole);
-    setIsUserDropdownOpen(false);
-    addToast({
-      type: 'info',
-      title: `Switched Role to ${newRole}`,
-      message: `Permissions updated to ${newRole} specifications.`,
-    });
-  };
+  const isTohriyo =
+    profile?.username?.toLowerCase() === 'tohriyo' ||
+    profile?.email?.toLowerCase().includes('tohriyo') ||
+    profile?.is_super_admin === true ||
+    (role === 'ADMIN' && profile?.name?.toLowerCase().includes('tohriyo'));
 
   const handleSignOutClick = async () => {
     await signOut();
@@ -75,7 +68,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     addToast({
       type: 'info',
       title: 'Signed Out',
-      message: 'Active session ended. Viewing in Viewer mode.',
+      message: 'Active security session terminated.',
     });
   };
 
@@ -227,7 +220,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               className="flex items-center gap-2 p-1.5 rounded-lg border border-slate-200/80 hover:bg-slate-50 transition-colors cursor-pointer text-left"
             >
               <div className="w-7 h-7 rounded-full bg-slate-900 text-white font-bold text-xs flex items-center justify-center tracking-tight">
-                {(profile?.name || user?.email || 'Admin')
+                {(profile?.name || profile?.username || 'Admin')
                   .slice(0, 2)
                   .toUpperCase()}
               </div>
@@ -235,7 +228,7 @@ export const TopBar: React.FC<TopBarProps> = ({
               <div className="hidden sm:block truncate text-left">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-slate-900 leading-tight truncate max-w-[100px]">
-                    {profile?.name || user?.email?.split('@')[0] || 'User'}
+                    {profile?.name || profile?.username || 'User'}
                   </span>
                   <span
                     className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
@@ -261,11 +254,16 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <div className="absolute right-0 mt-1.5 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-2 text-xs animate-in fade-in-50 zoom-in-95">
                   {/* Profile info */}
                   <div className="px-4 py-2.5 border-b border-slate-100 bg-slate-50/50">
-                    <p className="font-bold text-slate-900 text-sm">
-                      {profile?.name || user?.email || 'Active Operator'}
-                    </p>
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900 text-sm">
+                        {profile?.name || 'Active Operator'}
+                      </p>
+                      <span className="text-[10px] font-mono text-slate-500 font-bold">
+                        @{profile?.username || 'user'}
+                      </span>
+                    </div>
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                      {profile?.email || user?.email || 'demo@mybimi.jp'}
+                      {profile?.email || `${profile?.username || 'user'}@mybimi.jp`}
                     </p>
                     <div className="mt-2 flex items-center gap-1.5">
                       <span
@@ -276,60 +274,55 @@ export const TopBar: React.FC<TopBarProps> = ({
                         {role} ROLE
                       </span>
                       <span className="text-[10px] text-slate-400 font-mono">
-                        {isConfigured ? 'Supabase Live' : 'Demo Mode'}
+                        {isConfigured ? 'Supabase Live' : 'Verified Secure'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Switch Role Quick Actions */}
-                  <div className="px-4 py-2">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                      SWITCH ACTIVE ROLE (TEST RBAC)
-                    </span>
-                    <div className="space-y-1">
-                      {DEMO_ACCOUNTS.map((acc) => (
-                        <button
-                          key={acc.role}
-                          onClick={() => handleRoleSelect(acc.role)}
-                          className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors ${
-                            role === acc.role
-                              ? 'bg-slate-900 text-white font-semibold'
-                              : 'text-slate-600 hover:bg-slate-100'
-                          }`}
-                        >
-                          <div>
-                            <span className="font-bold text-xs">{acc.role}</span>
-                            <span className="text-[10px] block opacity-75 truncate max-w-[180px]">
-                              {acc.name}
-                            </span>
-                          </div>
-                          {role === acc.role && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Navigation & Admin Shortcuts */}
+                  <div className="p-2 space-y-1">
+                    {isTohriyo && (
+                      <button
+                        onClick={() => {
+                          setIsUserDropdownOpen(false);
+                          setActiveTab('super-admin');
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-950 font-semibold flex items-center justify-between transition-colors cursor-pointer border border-amber-200/80"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span className="text-xs">Security & Monitor</span>
+                        </div>
+                        <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-200 text-amber-900">
+                          SUPER ADMIN
+                        </span>
+                      </button>
+                    )}
+
+                    {role === 'ADMIN' && (
+                      <button
+                        onClick={() => {
+                          setIsUserDropdownOpen(false);
+                          setActiveTab('users');
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-100 font-medium flex items-center gap-2 transition-colors cursor-pointer text-xs"
+                      >
+                        <Users className="w-4 h-4 text-slate-500" />
+                        <span>User Role Setup & Staff</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="h-px bg-slate-100 my-1" />
 
                   {/* Action buttons */}
-                  <div className="px-2 pt-1">
-                    <button
-                      onClick={() => {
-                        setIsUserDropdownOpen(false);
-                        setIsAuthModalOpen(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg text-slate-700 hover:bg-slate-100 font-medium flex items-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Supabase Login & Register...</span>
-                    </button>
-
+                  <div className="px-2 pb-1">
                     <button
                       onClick={handleSignOutClick}
-                      className="w-full text-left px-3 py-2 rounded-lg text-rose-600 hover:bg-rose-50 font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                      className="w-full text-left px-3 py-2 rounded-lg text-rose-600 hover:bg-rose-50 font-semibold flex items-center gap-2 transition-colors cursor-pointer text-xs"
                     >
                       <LogOut className="w-3.5 h-3.5" />
-                      <span>Sign Out</span>
+                      <span>Sign Out (Lock Studio)</span>
                     </button>
                   </div>
                 </div>
@@ -338,12 +331,6 @@ export const TopBar: React.FC<TopBarProps> = ({
           </div>
         </div>
       </header>
-
-      {/* Auth Modal */}
-      <AuthModal
-        isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
-      />
     </>
   );
 };

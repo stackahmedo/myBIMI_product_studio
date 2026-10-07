@@ -19,12 +19,28 @@ import { ReportsView } from './views/ReportsView';
 import { UsersView } from './views/UsersView';
 import { AuditLogView } from './views/AuditLogView';
 import { SettingsView } from './views/SettingsView';
+import { SuperAdminView } from './views/SuperAdminView';
+import { LoginView } from './components/auth/LoginView';
 import { AccessRestrictedView } from './components/auth/AccessRestrictedView';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const { activeTab } = useApp();
-  const { role, permissions } = useAuth();
+  const { role, permissions, isAuthenticated, isLoading } = useAuth();
+
+  // Mandatory Authentication Gate
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white space-y-4 font-sans">
+        <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-mono text-slate-400">Verifying Security Session...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
 
   const renderActiveView = () => {
     switch (activeTab) {
@@ -108,6 +124,16 @@ const AppContent: React.FC = () => {
           );
         }
         return <SettingsView />;
+      case 'super-admin':
+        if (role !== 'ADMIN') {
+          return (
+            <AccessRestrictedView
+              requiredRole="ADMIN"
+              featureName="Security & Super Admin Monitoring"
+            />
+          );
+        }
+        return <SuperAdminView />;
       default:
         return <DashboardView />;
     }

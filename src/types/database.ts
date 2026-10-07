@@ -338,12 +338,14 @@ export interface RoleRecord {
 
 export interface UserProfile {
   id: string;
+  username?: string;
   name: string;
   email: string;
   role: AppRole | 'super_admin' | 'store_manager' | 'inventory_lead' | 'staff';
   assigned_store_id?: StoreId; // null if super admin
   is_active: boolean;
   last_login_at: string;
+  is_super_admin?: boolean;
 }
 
 export interface AuditLogEntry {

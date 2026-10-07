@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Home, ChevronDown, ChevronUp } from 'lucide-react';
+import { securityMonitoringService } from '../../services/securityMonitoringService';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -32,6 +33,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an unhandled exception:', error, errorInfo);
     this.setState({ errorInfo });
+    try {
+      securityMonitoringService.recordCrash(
+        error,
+        errorInfo.componentStack || undefined,
+        'CRITICAL'
+      );
+    } catch {
+      // ignore
+    }
   }
 
   handleReset = () => {

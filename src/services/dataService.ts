@@ -23,28 +23,35 @@ import {
 } from '../types/database';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { websiteSyncService } from './websiteSyncService';
+import { securityMonitoringService } from './securityMonitoringService';
 import {
   INITIAL_STORES,
   INITIAL_CATEGORIES,
   INITIAL_BRANDS,
   INITIAL_SUPPLIERS,
-  INITIAL_PRODUCTS,
-  INITIAL_STORE_PRODUCTS,
-  INITIAL_PRODUCT_STORE_PRICES,
-  INITIAL_PRICE_HISTORY,
-  INITIAL_STOCK_MOVEMENTS,
-  INITIAL_PURCHASE_ORDERS,
-  INITIAL_SYNC_LOGS,
-  INITIAL_USERS,
-  INITIAL_AUDIT_LOGS,
-  INITIAL_PRODUCT_SUPPLIERS,
-  INITIAL_SUPPLIER_PRICE_HISTORY,
   INITIAL_PRICE_TAG_TEMPLATES,
-  INITIAL_PRINT_BATCHES,
 } from '../data/mockData';
 
-// Persistent LocalStorage keys for stateful demo experience
+// Persistent LocalStorage keys for stateful operations
 const STORAGE_PREFIX = 'bimi_product_studio_';
+
+// One-time automatic migration to purge old mock demo products
+const DEMO_CLEANED_FLAG = 'bimi_clean_prod_v3';
+if (typeof localStorage !== 'undefined' && !localStorage.getItem(DEMO_CLEANED_FLAG)) {
+  try {
+    localStorage.removeItem(STORAGE_PREFIX + 'products');
+    localStorage.removeItem(STORAGE_PREFIX + 'store_products');
+    localStorage.removeItem(STORAGE_PREFIX + 'product_store_prices');
+    localStorage.removeItem(STORAGE_PREFIX + 'price_history');
+    localStorage.removeItem(STORAGE_PREFIX + 'stock_movements');
+    localStorage.removeItem(STORAGE_PREFIX + 'purchase_orders');
+    localStorage.removeItem(STORAGE_PREFIX + 'sync_logs');
+    localStorage.removeItem(STORAGE_PREFIX + 'audit_logs');
+    localStorage.setItem(DEMO_CLEANED_FLAG, 'true');
+  } catch {
+    // ignore
+  }
+}
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -68,19 +75,40 @@ class ProductStudioDataService {
   private categories: Category[] = loadFromStorage('categories', INITIAL_CATEGORIES);
   private brands: Brand[] = loadFromStorage('brands', INITIAL_BRANDS);
   private suppliers: Supplier[] = loadFromStorage('suppliers', INITIAL_SUPPLIERS);
-  private products: Product[] = loadFromStorage('products', INITIAL_PRODUCTS);
-  private storeProducts: StoreProduct[] = loadFromStorage('store_products', INITIAL_STORE_PRODUCTS);
-  private productStorePrices: ProductStorePrice[] = loadFromStorage('product_store_prices', INITIAL_PRODUCT_STORE_PRICES);
-  private priceHistory: PriceHistoryRecord[] = loadFromStorage('price_history', INITIAL_PRICE_HISTORY);
-  private stockMovements: StockMovement[] = loadFromStorage('stock_movements', INITIAL_STOCK_MOVEMENTS);
-  private purchaseOrders: PurchaseOrder[] = loadFromStorage('purchase_orders', INITIAL_PURCHASE_ORDERS);
-  private syncLogs: WebsiteSyncEvent[] = loadFromStorage('sync_logs', INITIAL_SYNC_LOGS);
-  private users: UserProfile[] = loadFromStorage('users', INITIAL_USERS);
-  private auditLogs: AuditLogEntry[] = loadFromStorage('audit_logs', INITIAL_AUDIT_LOGS);
-  private productSuppliers: ProductSupplier[] = loadFromStorage('product_suppliers', INITIAL_PRODUCT_SUPPLIERS);
-  private supplierPriceHistory: SupplierPriceHistoryRecord[] = loadFromStorage('supplier_price_history', INITIAL_SUPPLIER_PRICE_HISTORY);
+  private products: Product[] = loadFromStorage('products', []);
+  private storeProducts: StoreProduct[] = loadFromStorage('store_products', []);
+  private productStorePrices: ProductStorePrice[] = loadFromStorage('product_store_prices', []);
+  private priceHistory: PriceHistoryRecord[] = loadFromStorage('price_history', []);
+  private stockMovements: StockMovement[] = loadFromStorage('stock_movements', []);
+  private purchaseOrders: PurchaseOrder[] = loadFromStorage('purchase_orders', []);
+  private syncLogs: WebsiteSyncEvent[] = loadFromStorage('sync_logs', []);
+  private users: UserProfile[] = loadFromStorage('users', [
+    {
+      id: 'usr-tohriyo-01',
+      name: 'Tohriyo',
+      email: 'tohriyo@mybimi.jp',
+      role: 'ADMIN',
+      username: 'tohriyo',
+      is_super_admin: true,
+      is_active: true,
+      last_login_at: new Date().toISOString(),
+    },
+    {
+      id: 'usr-sachou-02',
+      name: 'Sachou',
+      email: 'sachou@mybimi.jp',
+      role: 'MANAGER',
+      username: 'sachou',
+      is_super_admin: false,
+      is_active: true,
+      last_login_at: new Date().toISOString(),
+    },
+  ]);
+  private auditLogs: AuditLogEntry[] = loadFromStorage('audit_logs', []);
+  private productSuppliers: ProductSupplier[] = loadFromStorage('product_suppliers', []);
+  private supplierPriceHistory: SupplierPriceHistoryRecord[] = loadFromStorage('supplier_price_history', []);
   private priceTagTemplates: PriceTagTemplate[] = loadFromStorage('price_tag_templates', INITIAL_PRICE_TAG_TEMPLATES);
-  private printBatches: PrintBatchRecord[] = loadFromStorage('print_batches', INITIAL_PRINT_BATCHES);
+  private printBatches: PrintBatchRecord[] = loadFromStorage('print_batches', []);
 
   private persist() {
     saveToStorage('stores', this.stores);
@@ -103,33 +131,7 @@ class ProductStudioDataService {
   }
 
   constructor() {
-    this.ensureInitialProductsPresent();
     this.ensureProductPublishingStates();
-  }
-
-  private ensureInitialProductsPresent() {
-    let modified = false;
-    for (const initP of INITIAL_PRODUCTS) {
-      if (!this.products.some((p) => p.id === initP.id)) {
-        this.products.unshift(initP);
-        modified = true;
-      }
-    }
-    for (const initSP of INITIAL_STORE_PRODUCTS) {
-      if (!this.storeProducts.some((sp) => sp.id === initSP.id)) {
-        this.storeProducts.unshift(initSP);
-        modified = true;
-      }
-    }
-    for (const initPSP of INITIAL_PRODUCT_STORE_PRICES) {
-      if (!this.productStorePrices.some((psp) => psp.id === initPSP.id)) {
-        this.productStorePrices.unshift(initPSP);
-        modified = true;
-      }
-    }
-    if (modified) {
-      this.persist();
-    }
   }
 
   private ensureProductPublishingStates() {
@@ -1766,6 +1768,21 @@ class ProductStudioDataService {
     if (this.auditLogs.length > 200) {
       this.auditLogs.pop();
     }
+    try {
+      securityMonitoringService.recordDataEdit({
+        entity_type: (entry.entity_type as any) || 'product',
+        entity_id: entry.entity_id || log.id,
+        entity_name: entry.description,
+        action: (entry.action?.toUpperCase() as any) || 'UPDATE',
+        description: entry.description,
+        user_id: 'active-operator',
+        user_name: entry.user_name || 'Active Operator',
+        user_role: entry.user_role || 'STAFF',
+        diff: entry.diff as any,
+      });
+    } catch {
+      // ignore
+    }
   }
 
   async getPurchaseOrders(): Promise<PurchaseOrder[]> {
@@ -1945,19 +1962,40 @@ class ProductStudioDataService {
     this.categories = [...INITIAL_CATEGORIES];
     this.brands = [...INITIAL_BRANDS];
     this.suppliers = [...INITIAL_SUPPLIERS];
-    this.products = [...INITIAL_PRODUCTS];
-    this.storeProducts = [...INITIAL_STORE_PRODUCTS];
-    this.productStorePrices = [...INITIAL_PRODUCT_STORE_PRICES];
-    this.priceHistory = [...INITIAL_PRICE_HISTORY];
-    this.stockMovements = [...INITIAL_STOCK_MOVEMENTS];
-    this.purchaseOrders = [...INITIAL_PURCHASE_ORDERS];
-    this.syncLogs = [...INITIAL_SYNC_LOGS];
-    this.users = [...INITIAL_USERS];
-    this.auditLogs = [...INITIAL_AUDIT_LOGS];
-    this.productSuppliers = [...INITIAL_PRODUCT_SUPPLIERS];
-    this.supplierPriceHistory = [...INITIAL_SUPPLIER_PRICE_HISTORY];
+    this.products = [];
+    this.storeProducts = [];
+    this.productStorePrices = [];
+    this.priceHistory = [];
+    this.stockMovements = [];
+    this.purchaseOrders = [];
+    this.syncLogs = [];
+    this.users = [
+      {
+        id: 'usr-tohriyo-01',
+        name: 'Tohriyo',
+        email: 'tohriyo@mybimi.jp',
+        role: 'ADMIN',
+        username: 'tohriyo',
+        is_super_admin: true,
+        is_active: true,
+        last_login_at: new Date().toISOString(),
+      },
+      {
+        id: 'usr-sachou-02',
+        name: 'Sachou',
+        email: 'sachou@mybimi.jp',
+        role: 'MANAGER',
+        username: 'sachou',
+        is_super_admin: false,
+        is_active: true,
+        last_login_at: new Date().toISOString(),
+      },
+    ];
+    this.auditLogs = [];
+    this.productSuppliers = [];
+    this.supplierPriceHistory = [];
     this.priceTagTemplates = [...INITIAL_PRICE_TAG_TEMPLATES];
-    this.printBatches = [...INITIAL_PRINT_BATCHES];
+    this.printBatches = [];
     this.persist();
   }
 }
