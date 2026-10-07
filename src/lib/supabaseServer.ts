@@ -22,9 +22,9 @@ export interface SupabaseServerConfig {
  */
 export function getSupabaseServerConfig(): SupabaseServerConfig {
   return {
-    supabaseUrl: process.env.SUPABASE_URL || 'https://ohuxevrhdpwcpaipxhqm.supabase.co',
+    supabaseUrl: process.env.SUPABASE_URL || 'https://uxvcqphwjawgwmakhxci.supabase.co',
     publishableKey: process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_5SndaauFfQC8W2Al33WgyQ_bdKLEXK0',
     secretKey: process.env.SUPABASE_SECRET_KEY,
-    jwksUrl: process.env.SUPABASE_JWKS_URL || 'https://ohuxevrhdpwcpaipxhqm.supabase.co/auth/v1/.well-known/jwks.json',
+    jwksUrl: process.env.SUPABASE_JWKS_URL || 'https://uxvcqphwjawgwmakhxci.supabase.co/auth/v1/.well-known/jwks.json',
   };
 }
