@@ -14,6 +14,7 @@ import { PricingView } from './views/PricingView';
 import { PriceTagsView } from './views/PriceTagsView';
 import { SuppliersView } from './views/SuppliersView';
 import { PurchasingView } from './views/PurchasingView';
+import { TradeDocView } from './views/TradeDocView';
 import { WebsiteSyncView } from './views/WebsiteSyncView';
 import { ReportsView } from './views/ReportsView';
 import { UsersView } from './views/UsersView';
@@ -82,6 +83,8 @@ const AppContent: React.FC = () => {
           );
         }
         return <PurchasingView />;
+      case 'trade-doc':
+        return <TradeDocView />;
       case 'website-sync':
         return <WebsiteSyncView />;
       case 'reports':

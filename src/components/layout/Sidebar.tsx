@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   Lock,
   LogOut,
+  FileText,
 } from 'lucide-react';
 import { useApp, NavTab } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
@@ -66,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
     { id: 'price-tags', label: 'Price Tags', icon: Tag, requiredRole: 'ANY' },
     { id: 'suppliers', label: 'Suppliers', icon: Truck, requiredRole: 'MANAGER' },
     { id: 'purchasing', label: 'Purchasing', icon: ShoppingCart, requiredRole: 'MANAGER' },
+    { id: 'trade-doc', label: 'Trade Doc', icon: FileText, requiredRole: 'ANY' },
     { id: 'website-sync', label: 'Website Sync', icon: RefreshCw, badge: '1 Alert', badgeVariant: 'amber', requiredRole: 'ANY' },
     { id: 'reports', label: 'Reports', icon: BarChart3, requiredRole: 'MANAGER' },
     {

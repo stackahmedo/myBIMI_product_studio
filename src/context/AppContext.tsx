@@ -10,6 +10,7 @@ export type NavTab =
   | 'price-tags'
   | 'suppliers'
   | 'purchasing'
+  | 'trade-doc'
   | 'website-sync'
   | 'reports'
   | 'users'
@@ -65,7 +66,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const hash = window.location.hash.replace('#', '') as NavTab;
       const validTabs: NavTab[] = [
         'dashboard', 'products', 'inventory', 'pricing', 'price-tags',
-        'suppliers', 'purchasing', 'website-sync', 'reports', 'users', 'audit-log', 'settings'
+        'suppliers', 'purchasing', 'trade-doc', 'website-sync', 'reports', 'users', 'audit-log', 'settings'
       ];
       if (validTabs.includes(hash)) return hash;
       const params = new URLSearchParams(window.location.search);
@@ -89,7 +90,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const hash = window.location.hash.replace('#', '') as NavTab;
       const validTabs: NavTab[] = [
         'dashboard', 'products', 'inventory', 'pricing', 'price-tags',
-        'suppliers', 'purchasing', 'website-sync', 'reports', 'users', 'audit-log', 'settings'
+        'suppliers', 'purchasing', 'trade-doc', 'website-sync', 'reports', 'users', 'audit-log', 'settings'
       ];
       if (validTabs.includes(hash)) {
         setActiveTabState(hash);
