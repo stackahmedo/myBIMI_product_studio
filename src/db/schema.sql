@@ -421,88 +421,109 @@ ALTER TABLE public.website_sync ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- 1. PROFILES POLICIES
+DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.profiles;
 CREATE POLICY "Profiles are viewable by authenticated users"
-ON public.profiles FOR SELECT TO authenticated USING (true);
+    ON public.profiles FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
-ON public.profiles FOR UPDATE TO authenticated
+    ON public.profiles FOR UPDATE TO authenticated
 USING (id = auth.uid()) WITH CHECK (id = auth.uid());
 
+DROP POLICY IF EXISTS "Admins have full access to profiles" ON public.profiles;
 CREATE POLICY "Admins have full access to profiles"
-ON public.profiles FOR ALL TO authenticated
+    ON public.profiles FOR ALL TO authenticated
 USING (public.get_auth_role() = 'ADMIN');
 
 -- 2. STORES POLICIES (All authenticated can view, only ADMIN can edit)
+DROP POLICY IF EXISTS "Stores viewable by all authenticated" ON public.stores;
 CREATE POLICY "Stores viewable by all authenticated"
-ON public.stores FOR SELECT TO authenticated USING (true);
+    ON public.stores FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Stores manageable by admins" ON public.stores;
 CREATE POLICY "Stores manageable by admins"
-ON public.stores FOR ALL TO authenticated
+    ON public.stores FOR ALL TO authenticated
 USING (public.get_auth_role() = 'ADMIN');
 
 -- 3. PRODUCTS & CATALOG POLICIES
+DROP POLICY IF EXISTS "Products viewable by all authenticated" ON public.products;
 CREATE POLICY "Products viewable by all authenticated"
-ON public.products FOR SELECT TO authenticated USING (true);
+    ON public.products FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Products manageable by Admin and Manager" ON public.products;
 CREATE POLICY "Products manageable by Admin and Manager"
-ON public.products FOR ALL TO authenticated
+    ON public.products FOR ALL TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
 -- 4. INVENTORY POLICIES
+DROP POLICY IF EXISTS "Inventory viewable by all authenticated" ON public.inventory;
 CREATE POLICY "Inventory viewable by all authenticated"
-ON public.inventory FOR SELECT TO authenticated USING (true);
+    ON public.inventory FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Inventory updatable by Admin, Manager, and Staff" ON public.inventory;
 CREATE POLICY "Inventory updatable by Admin, Manager, and Staff"
-ON public.inventory FOR UPDATE TO authenticated
+    ON public.inventory FOR UPDATE TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER', 'STORE_STAFF'));
 
+DROP POLICY IF EXISTS "Inventory insert/delete by Admin and Manager" ON public.inventory;
 CREATE POLICY "Inventory insert/delete by Admin and Manager"
-ON public.inventory FOR ALL TO authenticated
+    ON public.inventory FOR ALL TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
 -- 5. STOCK MOVEMENTS POLICIES
+DROP POLICY IF EXISTS "Stock movements viewable by all authenticated" ON public.stock_movements;
 CREATE POLICY "Stock movements viewable by all authenticated"
-ON public.stock_movements FOR SELECT TO authenticated USING (true);
+    ON public.stock_movements FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Stock movements recordable by Staff, Manager, Admin" ON public.stock_movements;
 CREATE POLICY "Stock movements recordable by Staff, Manager, Admin"
-ON public.stock_movements FOR INSERT TO authenticated
+    ON public.stock_movements FOR INSERT TO authenticated
 WITH CHECK (public.get_auth_role() IN ('ADMIN', 'MANAGER', 'STORE_STAFF'));
 
 -- 6. PRICING & PRICE HISTORY POLICIES
+DROP POLICY IF EXISTS "Prices viewable by all authenticated" ON public.product_store_prices;
 CREATE POLICY "Prices viewable by all authenticated"
-ON public.product_store_prices FOR SELECT TO authenticated USING (true);
+    ON public.product_store_prices FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Prices manageable by Admin and Manager" ON public.product_store_prices;
 CREATE POLICY "Prices manageable by Admin and Manager"
-ON public.product_store_prices FOR ALL TO authenticated
+    ON public.product_store_prices FOR ALL TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Price history viewable by all authenticated" ON public.price_history;
 CREATE POLICY "Price history viewable by all authenticated"
-ON public.price_history FOR SELECT TO authenticated USING (true);
+    ON public.price_history FOR SELECT TO authenticated USING (true);
 
+DROP POLICY IF EXISTS "Price history insertable by Admin and Manager" ON public.price_history;
 CREATE POLICY "Price history insertable by Admin and Manager"
-ON public.price_history FOR INSERT TO authenticated
+    ON public.price_history FOR INSERT TO authenticated
 WITH CHECK (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
 -- 7. SUPPLIERS & PURCHASING POLICIES
+DROP POLICY IF EXISTS "Suppliers viewable by Admin and Manager" ON public.suppliers;
 CREATE POLICY "Suppliers viewable by Admin and Manager"
-ON public.suppliers FOR SELECT TO authenticated
+    ON public.suppliers FOR SELECT TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Suppliers manageable by Admin and Manager" ON public.suppliers;
 CREATE POLICY "Suppliers manageable by Admin and Manager"
-ON public.suppliers FOR ALL TO authenticated
+    ON public.suppliers FOR ALL TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Purchase orders viewable by Admin and Manager" ON public.purchase_orders;
 CREATE POLICY "Purchase orders viewable by Admin and Manager"
-ON public.purchase_orders FOR ALL TO authenticated
+    ON public.purchase_orders FOR ALL TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
 -- 8. AUDIT LOGS POLICIES
+DROP POLICY IF EXISTS "Audit logs viewable by Admin and Manager" ON public.audit_logs;
 CREATE POLICY "Audit logs viewable by Admin and Manager"
-ON public.audit_logs FOR SELECT TO authenticated
+    ON public.audit_logs FOR SELECT TO authenticated
 USING (public.get_auth_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Audit logs insertable by all authenticated" ON public.audit_logs;
 CREATE POLICY "Audit logs insertable by all authenticated"
-ON public.audit_logs FOR INSERT TO authenticated
+    ON public.audit_logs FOR INSERT TO authenticated
 WITH CHECK (true);
 
 -- ============================================================================

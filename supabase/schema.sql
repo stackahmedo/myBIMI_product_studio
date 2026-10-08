@@ -498,11 +498,13 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: ROLES
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can view roles" ON public.roles;
 CREATE POLICY "Anyone can view roles"
     ON public.roles FOR SELECT
     TO anon, authenticated
     USING (true);
 
+DROP POLICY IF EXISTS "Only ADMIN can modify roles" ON public.roles;
 CREATE POLICY "Only ADMIN can modify roles"
     ON public.roles FOR ALL
     TO authenticated
@@ -511,17 +513,20 @@ CREATE POLICY "Only ADMIN can modify roles"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: PROFILES
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can view active profiles" ON public.profiles;
 CREATE POLICY "Users can view active profiles"
     ON public.profiles FOR SELECT
     TO authenticated
     USING (true);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
     ON public.profiles FOR UPDATE
     TO authenticated
     USING (id = auth.uid())
     WITH CHECK (id = auth.uid() AND role = (SELECT role FROM public.profiles WHERE id = auth.uid())); -- Prevent self-escalation
 
+DROP POLICY IF EXISTS "ADMIN has full profile control" ON public.profiles;
 CREATE POLICY "ADMIN has full profile control"
     ON public.profiles FOR ALL
     TO authenticated
@@ -530,20 +535,26 @@ CREATE POLICY "ADMIN has full profile control"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: STORES, CATEGORIES, BRANDS
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can read stores" ON public.stores;
 CREATE POLICY "Anyone can read stores"
     ON public.stores FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify stores" ON public.stores;
 CREATE POLICY "ADMIN and MANAGER can modify stores"
     ON public.stores FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Anyone can read categories" ON public.categories;
 CREATE POLICY "Anyone can read categories"
     ON public.categories FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify categories" ON public.categories;
 CREATE POLICY "ADMIN and MANAGER can modify categories"
     ON public.categories FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Anyone can read brands" ON public.brands;
 CREATE POLICY "Anyone can read brands"
     ON public.brands FOR SELECT TO anon, authenticated USING (true);
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify brands" ON public.brands;
 CREATE POLICY "ADMIN and MANAGER can modify brands"
     ON public.brands FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
@@ -551,25 +562,31 @@ CREATE POLICY "ADMIN and MANAGER can modify brands"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: PRODUCTS & PRODUCT_IMAGES
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can read products" ON public.products;
 CREATE POLICY "Anyone can read products"
     ON public.products FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can insert/update products" ON public.products;
 CREATE POLICY "ADMIN and MANAGER can insert/update products"
     ON public.products FOR INSERT TO authenticated
     WITH CHECK (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can update products" ON public.products;
 CREATE POLICY "ADMIN and MANAGER can update products"
     ON public.products FOR UPDATE TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
 -- Backward-compatibility delete policy
+DROP POLICY IF EXISTS "Only ADMIN can delete products" ON public.products;
 CREATE POLICY "Only ADMIN can delete products"
     ON public.products FOR DELETE TO authenticated
     USING (public.current_app_role() = 'ADMIN');
 
+DROP POLICY IF EXISTS "Anyone can view product images" ON public.product_images;
 CREATE POLICY "Anyone can view product images"
     ON public.product_images FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify product images" ON public.product_images;
 CREATE POLICY "ADMIN and MANAGER can modify product images"
     ON public.product_images FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
@@ -577,16 +594,20 @@ CREATE POLICY "ADMIN and MANAGER can modify product images"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: PRICING (PRODUCT_STORE_PRICES & PRICE_HISTORY)
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can read prices" ON public.product_store_prices;
 CREATE POLICY "Anyone can read prices"
     ON public.product_store_prices FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify prices" ON public.product_store_prices;
 CREATE POLICY "ADMIN and MANAGER can modify prices"
     ON public.product_store_prices FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Anyone can view price history" ON public.price_history;
 CREATE POLICY "Anyone can view price history"
     ON public.price_history FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can insert price history" ON public.price_history;
 CREATE POLICY "ADMIN and MANAGER can insert price history"
     ON public.price_history FOR INSERT TO authenticated
     WITH CHECK (public.current_app_role() IN ('ADMIN', 'MANAGER'));
@@ -594,13 +615,16 @@ CREATE POLICY "ADMIN and MANAGER can insert price history"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: INVENTORY & STOCK_MOVEMENTS
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can read inventory" ON public.inventory;
 CREATE POLICY "Anyone can read inventory"
     ON public.inventory FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can manage all inventory" ON public.inventory;
 CREATE POLICY "ADMIN and MANAGER can manage all inventory"
     ON public.inventory FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "STORE_STAFF can update inventory of assigned store" ON public.inventory;
 CREATE POLICY "STORE_STAFF can update inventory of assigned store"
     ON public.inventory FOR UPDATE TO authenticated
     USING (
@@ -608,9 +632,11 @@ CREATE POLICY "STORE_STAFF can update inventory of assigned store"
         (public.current_user_store_id() IS NULL OR store_id = public.current_user_store_id())
     );
 
+DROP POLICY IF EXISTS "Anyone can view stock movements" ON public.stock_movements;
 CREATE POLICY "Anyone can view stock movements"
     ON public.stock_movements FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN, MANAGER, and STORE_STAFF can record stock movements" ON public.stock_movements;
 CREATE POLICY "ADMIN, MANAGER, and STORE_STAFF can record stock movements"
     ON public.stock_movements FOR INSERT TO authenticated
     WITH CHECK (
@@ -621,17 +647,21 @@ CREATE POLICY "ADMIN, MANAGER, and STORE_STAFF can record stock movements"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: SUPPLIERS & PRODUCT_SUPPLIERS
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Anyone can view suppliers" ON public.suppliers;
 CREATE POLICY "Anyone can view suppliers"
     ON public.suppliers FOR SELECT TO anon, authenticated USING (true);
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify suppliers" ON public.suppliers;
 CREATE POLICY "ADMIN and MANAGER can modify suppliers"
     ON public.suppliers FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can view product suppliers" ON public.product_suppliers;
 CREATE POLICY "ADMIN and MANAGER can view product suppliers"
     ON public.product_suppliers FOR SELECT TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify product suppliers" ON public.product_suppliers;
 CREATE POLICY "ADMIN and MANAGER can modify product suppliers"
     ON public.product_suppliers FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
@@ -639,18 +669,22 @@ CREATE POLICY "ADMIN and MANAGER can modify product suppliers"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: PURCHASE ORDERS
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "ADMIN and MANAGER can view purchase orders" ON public.purchase_orders;
 CREATE POLICY "ADMIN and MANAGER can view purchase orders"
     ON public.purchase_orders FOR SELECT TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify purchase orders" ON public.purchase_orders;
 CREATE POLICY "ADMIN and MANAGER can modify purchase orders"
     ON public.purchase_orders FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can view purchase order items" ON public.purchase_order_items;
 CREATE POLICY "ADMIN and MANAGER can view purchase order items"
     ON public.purchase_order_items FOR SELECT TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can modify purchase order items" ON public.purchase_order_items;
 CREATE POLICY "ADMIN and MANAGER can modify purchase order items"
     ON public.purchase_order_items FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
@@ -658,18 +692,22 @@ CREATE POLICY "ADMIN and MANAGER can modify purchase order items"
 -- ----------------------------------------------------------------------------
 -- RLS POLICIES FOR: WEBSITE SYNC & AUDIT LOGS
 -- ----------------------------------------------------------------------------
+DROP POLICY IF EXISTS "ADMIN and MANAGER can view website sync" ON public.website_sync;
 CREATE POLICY "ADMIN and MANAGER can view website sync"
     ON public.website_sync FOR SELECT TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can record website sync" ON public.website_sync;
 CREATE POLICY "ADMIN and MANAGER can record website sync"
     ON public.website_sync FOR ALL TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "ADMIN and MANAGER can view audit logs" ON public.audit_logs;
 CREATE POLICY "ADMIN and MANAGER can view audit logs"
     ON public.audit_logs FOR SELECT TO authenticated
     USING (public.current_app_role() IN ('ADMIN', 'MANAGER'));
 
+DROP POLICY IF EXISTS "Authenticated users can record audit entries" ON public.audit_logs;
 CREATE POLICY "Authenticated users can record audit entries"
     ON public.audit_logs FOR INSERT TO authenticated
     WITH CHECK (auth.uid() IS NOT NULL);
