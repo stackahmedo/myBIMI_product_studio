@@ -182,11 +182,19 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
     Object.keys(rawRow).forEach((key) => {
       // Prototype pollution defense
       if (key === '__proto__' || key === 'constructor' || key === 'prototype') return;
-      const normalizedKey = key.trim().toLowerCase().replace(/[\s\-_]+/g, '');
+      const normalizedKey = key.trim().toLowerCase().replace(/[\s\-_/\\%]+/g, '');
       if (normalizedKey === '__proto__' || normalizedKey === 'constructor' || normalizedKey === 'prototype') return;
       clean[normalizedKey] = rawRow[key];
     });
     return clean;
+  };
+
+  const parseNumericPrice = (val: any): number => {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    const cleaned = String(val).replace(/[^\d.]/g, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? 0 : num;
   };
 
   // Safe image URL protocol validator
@@ -218,27 +226,66 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
       const n = normalizeRow(raw);
 
       // SKU Resolution
-      const rawSku = n['sku'] || n['code'] || n['itemcode'] || n['productcode'] || n['商品コード'];
-      const sku = rawSku ? String(rawSku).trim() : `BIMI-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
+      const rawSku = n['sku'] || n['code'] || n['itemcode'] || n['productcode'] || n['serial'] || n['商品コード'];
+      const sku = rawSku
+        ? isNaN(Number(rawSku))
+          ? String(rawSku).trim()
+          : `SKW-PRD-${String(rawSku).padStart(4, '0')}`
+        : `BIMI-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
 
       // Barcode Resolution
       const rawBarcode = n['barcode'] || n['jan'] || n['jancode'] || n['upc'] || n['ean'] || n['ean13'] || n['バーコード'];
       const barcode = rawBarcode
         ? String(rawBarcode).trim()
-        : `49${Math.floor(10000000000 + Math.random() * 90000000000)}`;
+        : `4901${String(idx + 1).padStart(8, '0')}`;
 
       // English Name
-      const name = String(n['name'] || n['nameen'] || n['productname'] || n['title'] || n['itemname'] || n['商品名'] || '').trim();
+      const name = String(
+        n['productnameeng'] ||
+        n['productnameen'] ||
+        n['nameen'] ||
+        n['name'] ||
+        n['productname'] ||
+        n['title'] ||
+        n['itemname'] ||
+        n['商品名'] ||
+        ''
+      ).trim();
 
       // Japanese Name
-      const nameJa = String(n['nameja'] || n['japanesename'] || n['japanese'] || n['namejp'] || n['商品名（日本語）'] || name).trim();
+      const nameJa = String(
+        n['productnamejp'] ||
+        n['productnameja'] ||
+        n['nameja'] ||
+        n['japanesename'] ||
+        n['japanese'] ||
+        n['namejp'] ||
+        n['商品名（日本語）'] ||
+        name
+      ).trim();
 
       // Category matching
       const catInput = String(n['category'] || n['categoryname'] || n['cat'] || n['カテゴリ'] || '').trim().toLowerCase();
-      const matchedCat = categories.find(
+      let matchedCat = categories.find(
         (c) => c.name.toLowerCase() === catInput || c.name_ja.toLowerCase() === catInput || c.slug.toLowerCase() === catInput
       );
-      const category_id = matchedCat ? matchedCat.id : defaultCategoryId;
+      let category_id = matchedCat ? matchedCat.id : defaultCategoryId;
+      if (category_id === defaultCategoryId) {
+        const combined = (name + ' ' + nameJa).toLowerCase();
+        if (['beef', 'chicken', 'mutton', 'meat', 'sina', 'keema', 'lamb', '牛', '鶏', 'マトン', '肉'].some((k) => combined.includes(k))) {
+          category_id = categories.find((c) => c.slug === 'meat')?.id || category_id;
+        } else if (['fish', 'prawn', 'shrimp', 'hilsa', 'rohu', 'katla', 'baila', 'tengra', 'rui', 'ilish', '魚', '海老', 'エビ'].some((k) => combined.includes(k))) {
+          category_id = categories.find((c) => c.slug === 'seafood')?.id || category_id;
+        } else if (['juice', 'tea', 'drink', 'water', 'cola', 'beverage', 'ジュース', '茶', '飲料'].some((k) => combined.includes(k))) {
+          category_id = categories.find((c) => c.slug === 'beverages')?.id || category_id;
+        } else if (['chanachur', 'biscuit', 'chips', 'snack', 'rusk', 'sweet', 'cookie', 'スナック', 'ビスケット', '菓子'].some((k) => combined.includes(k))) {
+          category_id = categories.find((c) => c.slug === 'snacks')?.id || category_id;
+        } else if (['paneer', 'cheese', 'butter', 'ghee', 'yogurt', 'milk', '乳', 'チーズ', 'ヨーグルト'].some((k) => combined.includes(k))) {
+          category_id = categories.find((c) => c.slug === 'dairy')?.id || category_id;
+        } else {
+          category_id = categories.find((c) => c.slug === 'pantry')?.id || category_id;
+        }
+      }
 
       // Brand matching
       const brandInput = String(n['brand'] || n['brandname'] || n['ブランド'] || '').trim().toLowerCase();
@@ -246,24 +293,46 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
       const brand_id = matchedBrand ? matchedBrand.id : defaultBrandId;
 
       // Retail Price
-      const rawPrice = n['retailprice'] || n['price'] || n['baseretailprice'] || n['sellingprice'] || n['販売価格'];
-      const base_retail_price = Math.max(0, Number(rawPrice) || 0);
+      const rawPrice = n['pricewithouttax'] || n['retailprice'] || n['price'] || n['baseretailprice'] || n['sellingprice'] || n['販売価格'];
+      let base_retail_price = parseNumericPrice(rawPrice);
+      if (base_retail_price <= 0 && n['pricewithtax']) {
+        const incTax = parseNumericPrice(n['pricewithtax']);
+        if (incTax > 0) {
+          base_retail_price = Math.round(incTax / 1.08);
+        }
+      }
 
       // Cost Price
       const rawCost = n['costprice'] || n['cost'] || n['purchaseprice'] || n['仕入価格'];
-      const cost_price = Math.max(0, Number(rawCost) || Math.round(base_retail_price * 0.65));
+      const parsedCost = parseNumericPrice(rawCost);
+      const cost_price = parsedCost > 0 ? parsedCost : Math.round(base_retail_price * 0.65);
 
       // Tax Rate
       const rawTax = String(n['taxrate'] || n['tax'] || n['消費税'] || '0.08');
       const tax_rate = rawTax.includes('10') ? 0.1 : 0.08;
 
-      // Unit
-      const rawUnit = String(n['unit'] || n['単位'] || 'pcs').trim().toLowerCase();
-      const validUnits: ProductUnit[] = ['pcs', 'kg', 'g', 'L', 'ml', 'pack', 'box'];
-      const unit: ProductUnit = validUnits.includes(rawUnit as any) ? (rawUnit as ProductUnit) : 'pcs';
-
       // Weight / Volume
-      const weight_volume = String(n['weightvolume'] || n['weight'] || n['size'] || n['容量'] || n['重量'] || '1 unit').trim();
+      const rawWeight = String(n['weightpcunit'] || n['weightvolume'] || n['weight'] || n['size'] || n['容量'] || n['重量'] || '').trim();
+      let weight_volume = rawWeight;
+      if (!weight_volume) {
+        const m = name.match(/(\d+(?:\.\d+)?\s*(?:ml|l|kg|gm|g|pcs|pc|packet|can))\b/i);
+        weight_volume = m ? m[1].toUpperCase() : '1 unit';
+      }
+
+      // Unit
+      const rawUnit = String(n['unit'] || n['単位'] || '').trim().toLowerCase();
+      let unit: ProductUnit = 'pcs';
+      if (rawUnit && ['pcs', 'kg', 'g', 'L', 'ml', 'pack', 'box'].includes(rawUnit)) {
+        unit = rawUnit as ProductUnit;
+      } else {
+        const wLow = weight_volume.toLowerCase();
+        if (wLow.includes('kg')) unit = 'kg';
+        else if (wLow.includes('g') && !wLow.includes('kg')) unit = 'g';
+        else if (wLow.includes('ml')) unit = 'ml';
+        else if (wLow.includes('l') && !wLow.includes('ml')) unit = 'L';
+        else if (wLow.includes('pack') || wLow.includes('pkt')) unit = 'pack';
+        else if (wLow.includes('box')) unit = 'box';
+      }
 
       // Country of origin
       const country_of_origin = String(n['countryoforigin'] || n['origin'] || n['country'] || n['原産国'] || 'Japan').trim();

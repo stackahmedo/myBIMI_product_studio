@@ -31,23 +31,23 @@ import {
   INITIAL_SUPPLIERS,
   INITIAL_PRICE_TAG_TEMPLATES,
 } from '../data/mockData';
+import {
+  SHIN_KOIWA_PRODUCTS,
+  generateShinKoiwaStoreProducts,
+  generateShinKoiwaStorePrices,
+} from '../data/shinKoiwaProducts';
 
 // Persistent LocalStorage keys for stateful operations
 const STORAGE_PREFIX = 'bimi_product_studio_';
 
-// One-time automatic migration to purge old mock demo products
-const DEMO_CLEANED_FLAG = 'bimi_clean_prod_v3';
-if (typeof localStorage !== 'undefined' && !localStorage.getItem(DEMO_CLEANED_FLAG)) {
+// One-time automatic migration to load official Shin-Koiwa store product list
+const SHIN_KOIWA_MIGRATION_FLAG = 'bimi_shin_koiwa_intake_v1';
+if (typeof localStorage !== 'undefined' && !localStorage.getItem(SHIN_KOIWA_MIGRATION_FLAG)) {
   try {
     localStorage.removeItem(STORAGE_PREFIX + 'products');
     localStorage.removeItem(STORAGE_PREFIX + 'store_products');
     localStorage.removeItem(STORAGE_PREFIX + 'product_store_prices');
-    localStorage.removeItem(STORAGE_PREFIX + 'price_history');
-    localStorage.removeItem(STORAGE_PREFIX + 'stock_movements');
-    localStorage.removeItem(STORAGE_PREFIX + 'purchase_orders');
-    localStorage.removeItem(STORAGE_PREFIX + 'sync_logs');
-    localStorage.removeItem(STORAGE_PREFIX + 'audit_logs');
-    localStorage.setItem(DEMO_CLEANED_FLAG, 'true');
+    localStorage.setItem(SHIN_KOIWA_MIGRATION_FLAG, 'true');
   } catch {
     // ignore
   }
@@ -131,7 +131,34 @@ class ProductStudioDataService {
   }
 
   constructor() {
+    this.ensureShinKoiwaProducts();
     this.ensureProductPublishingStates();
+  }
+
+  private ensureShinKoiwaProducts() {
+    const hasShinKoiwa = this.products.some((p) => p.sku && p.sku.startsWith('SKW-PRD-'));
+    if (!hasShinKoiwa) {
+      this.products = [...SHIN_KOIWA_PRODUCTS, ...this.products];
+      const skwStoreProducts = generateShinKoiwaStoreProducts(SHIN_KOIWA_PRODUCTS);
+      const skwPrices = generateShinKoiwaStorePrices(SHIN_KOIWA_PRODUCTS);
+      this.storeProducts = [...skwStoreProducts, ...this.storeProducts];
+      this.productStorePrices = [...skwPrices, ...this.productStorePrices];
+      this.persist();
+    }
+  }
+
+  seedShinKoiwaCatalog(): { importedCount: number } {
+    const existingSkus = new Set(this.products.map((p) => p.sku));
+    const toAdd = SHIN_KOIWA_PRODUCTS.filter((p) => !existingSkus.has(p.sku));
+    if (toAdd.length > 0) {
+      this.products = [...toAdd, ...this.products];
+      const skwStoreProducts = generateShinKoiwaStoreProducts(toAdd);
+      const skwPrices = generateShinKoiwaStorePrices(toAdd);
+      this.storeProducts = [...skwStoreProducts, ...this.storeProducts];
+      this.productStorePrices = [...skwPrices, ...this.productStorePrices];
+      this.persist();
+    }
+    return { importedCount: toAdd.length };
   }
 
   private ensureProductPublishingStates() {
@@ -712,6 +739,22 @@ class ProductStudioDataService {
           shelf_location: item.shelfLocation || 'Storage',
           last_restocked_at: now,
           updated_at: now,
+        });
+
+        // Register store-level pricing for accurate store and shelf price tag calculation
+        this.productStorePrices.push({
+          id: `psp-${st.code.toLowerCase()}-${newProduct.id}`,
+          product_id: newProduct.id,
+          store_id: st.id,
+          store_name: st.name,
+          regular_price: newProduct.base_retail_price,
+          offer_price: null,
+          wholesale_price: null,
+          online_price: newProduct.base_retail_price,
+          tax_rate: newProduct.tax_rate,
+          is_active: true,
+          last_updated: now,
+          updated_by: operator.name,
         });
 
         if (storeQty > 0) {
@@ -2096,9 +2139,9 @@ class ProductStudioDataService {
     this.categories = [...INITIAL_CATEGORIES];
     this.brands = [...INITIAL_BRANDS];
     this.suppliers = [...INITIAL_SUPPLIERS];
-    this.products = [];
-    this.storeProducts = [];
-    this.productStorePrices = [];
+    this.products = [...SHIN_KOIWA_PRODUCTS];
+    this.storeProducts = generateShinKoiwaStoreProducts(SHIN_KOIWA_PRODUCTS);
+    this.productStorePrices = generateShinKoiwaStorePrices(SHIN_KOIWA_PRODUCTS);
     this.priceHistory = [];
     this.stockMovements = [];
     this.purchaseOrders = [];
