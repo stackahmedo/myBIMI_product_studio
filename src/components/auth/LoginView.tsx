@@ -80,6 +80,14 @@ export const LoginView: React.FC = () => {
       setRegError('Please choose a User ID / Username.');
       return;
     }
+    if (cleanUser.length < 3) {
+      setRegError('User ID must be at least 3 characters.');
+      return;
+    }
+    if (/\s/.test(cleanUser)) {
+      setRegError('User ID cannot contain spaces.');
+      return;
+    }
     if (!regPassword || regPassword.length < 4) {
       setRegError('Password must be at least 4 characters.');
       return;

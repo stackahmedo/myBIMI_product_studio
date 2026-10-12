@@ -163,27 +163,69 @@ class SecurityMonitoringService {
     }
   }
 
+  private deduplicateAndCleanUsers(users: UserAccount[]): UserAccount[] {
+    const seenUsernames = new Map<string, UserAccount>();
+
+    for (const u of users) {
+      if (!u || !u.username) continue;
+      const cleanUsername = u.username.trim().toLowerCase();
+      if (!cleanUsername) continue;
+
+      if (!seenUsernames.has(cleanUsername)) {
+        seenUsernames.set(cleanUsername, {
+          ...u,
+          username: cleanUsername,
+          name: u.name?.trim() || cleanUsername,
+          email: u.email?.trim() || `${cleanUsername}@mybimi.jp`,
+          passwordHash: u.passwordHash?.trim() || 'Kurosaki123',
+          role: u.role || 'STORE_STAFF',
+          is_active: u.is_active ?? true,
+          approval_status: u.approval_status || 'APPROVED',
+        });
+      } else {
+        // Merge duplicates: preserve custom/stronger password if the existing one is default
+        const existing = seenUsernames.get(cleanUsername)!;
+        if ((!existing.passwordHash || existing.passwordHash === 'Kurosaki123') && u.passwordHash && u.passwordHash !== 'Kurosaki123') {
+          existing.passwordHash = u.passwordHash.trim();
+        }
+        if (u.is_developer) existing.is_developer = true;
+        if (u.is_super_admin) existing.is_super_admin = true;
+        if (u.role === 'ADMIN') existing.role = 'ADMIN';
+        else if (u.role === 'MANAGER' && existing.role !== 'ADMIN') existing.role = 'MANAGER';
+        if (u.is_active) existing.is_active = true;
+        if (u.approval_status === 'APPROVED') existing.approval_status = 'APPROVED';
+      }
+    }
+
+    // Ensure core initial accounts (tohriyo, sachou) exist and are properly configured
+    CORE_INITIAL_ACCOUNTS.forEach((core) => {
+      const clean = core.username.toLowerCase();
+      const existing = seenUsernames.get(clean);
+      if (!existing) {
+        seenUsernames.set(clean, { ...core });
+      } else {
+        existing.is_super_admin = core.is_super_admin;
+        existing.is_developer = core.is_developer;
+        existing.role = core.role;
+        existing.is_active = true;
+        existing.approval_status = 'APPROVED';
+        if (!existing.passwordHash) {
+          existing.passwordHash = core.passwordHash;
+        }
+      }
+    });
+
+    return Array.from(seenUsernames.values());
+  }
+
   private init() {
     if (this.isInitialized) return;
     try {
       const rawUsers = localStorage.getItem(STORAGE_USERS_KEY);
       if (rawUsers) {
         const parsed = JSON.parse(rawUsers) as UserAccount[];
-        // Ensure core accounts are always present and updated
-        CORE_INITIAL_ACCOUNTS.forEach((core) => {
-          const idx = parsed.findIndex((u) => u.username.toLowerCase() === core.username.toLowerCase());
-          if (idx === -1) {
-            parsed.unshift(core);
-          } else {
-            // Keep credentials intact and approved
-            parsed[idx].passwordHash = core.passwordHash;
-            parsed[idx].is_super_admin = core.is_super_admin;
-            parsed[idx].is_developer = core.is_developer;
-            parsed[idx].is_active = true;
-            parsed[idx].approval_status = 'APPROVED';
-          }
-        });
-        this.users = parsed;
+        this.users = this.deduplicateAndCleanUsers(parsed);
+        this.saveUsers();
       } else {
         this.users = [...CORE_INITIAL_ACCOUNTS];
         this.saveUsers();
@@ -214,41 +256,50 @@ class SecurityMonitoringService {
     this.dataEdits.forEach((edit) => {
       if (
         edit.entity_type === 'user' &&
-        (edit.description.includes('PENDING_APPROVAL') ||
-          edit.user_role === 'APPLICANT' ||
-          edit.action === 'CREATE')
+        (edit.description.includes('PENDING_APPROVAL') || edit.user_role === 'APPLICANT')
       ) {
         const username = edit.entity_name.trim().toLowerCase();
         if (!username || username === 'tohriyo' || username === 'sachou') return;
-        const existing = this.users.find((u) => u.username.toLowerCase() === username);
-        if (!existing) {
-          const wasApproved = this.dataEdits.some(
-            (e) =>
-              e.entity_type === 'user' &&
-              e.entity_name.toLowerCase() === username &&
-              (e.description.toLowerCase().includes('approved') || e.action === 'ROLE_CHANGE')
-          );
-          const wasRejected = this.dataEdits.some(
-            (e) =>
-              e.entity_type === 'user' &&
-              e.entity_name.toLowerCase() === username &&
-              (e.description.toLowerCase().includes('rejected') || e.action === 'DELETE')
-          );
 
-          this.users.push({
-            id: edit.entity_id || `usr-${username}`,
-            username: username,
-            name: edit.user_name || username,
-            email: `${username}@mybimi.jp`,
-            passwordHash: 'Kurosaki123',
-            role: 'STORE_STAFF',
-            is_active: wasApproved,
-            approval_status: wasRejected ? 'REJECTED' : wasApproved ? 'APPROVED' : 'PENDING',
-            requested_at: edit.timestamp,
-            created_at: edit.timestamp,
-          });
-          changed = true;
-        }
+        // Skip if user already exists
+        const existing = this.users.find((u) => u.username.toLowerCase().trim() === username);
+        if (existing) return;
+
+        // Skip if user was deleted
+        const wasDeleted = this.dataEdits.some(
+          (e) =>
+            e.entity_type === 'user' &&
+            e.entity_name.toLowerCase().trim() === username &&
+            e.action === 'DELETE'
+        );
+        if (wasDeleted) return;
+
+        const wasApproved = this.dataEdits.some(
+          (e) =>
+            e.entity_type === 'user' &&
+            e.entity_name.toLowerCase().trim() === username &&
+            (e.description.toLowerCase().includes('approved') || e.action === 'ROLE_CHANGE')
+        );
+        const wasRejected = this.dataEdits.some(
+          (e) =>
+            e.entity_type === 'user' &&
+            e.entity_name.toLowerCase().trim() === username &&
+            e.description.toLowerCase().includes('rejected')
+        );
+
+        this.users.push({
+          id: edit.entity_id || `usr-${username}`,
+          username: username,
+          name: edit.user_name || username,
+          email: `${username}@mybimi.jp`,
+          passwordHash: 'Kurosaki123',
+          role: 'STORE_STAFF',
+          is_active: wasApproved,
+          approval_status: wasRejected ? 'REJECTED' : wasApproved ? 'APPROVED' : 'PENDING',
+          requested_at: edit.timestamp,
+          created_at: edit.timestamp,
+        });
+        changed = true;
       }
     });
 
@@ -276,6 +327,7 @@ class SecurityMonitoringService {
   }
 
   private saveUsers() {
+    this.users = this.deduplicateAndCleanUsers(this.users);
     this.saveStorage(STORAGE_USERS_KEY, this.users);
   }
 
@@ -370,6 +422,7 @@ class SecurityMonitoringService {
 
   public getAllUsers(): UserAccount[] {
     this.init();
+    this.users = this.deduplicateAndCleanUsers(this.users);
     return [...this.users];
   }
 
@@ -385,15 +438,17 @@ class SecurityMonitoringService {
     this.init();
     const cleanUsername = input.username.trim().toLowerCase();
     if (!cleanUsername) return { success: false, error: 'User ID (Username) is required.' };
+    if (cleanUsername.includes(' ')) return { success: false, error: 'User ID cannot contain spaces.' };
+    if (cleanUsername.length < 3) return { success: false, error: 'User ID must be at least 3 characters.' };
     if (!input.password || input.password.length < 4) {
       return { success: false, error: 'Password must be at least 4 characters.' };
     }
 
     const exists = this.users.some(
-      (u) => u.username.toLowerCase() === cleanUsername || u.email.toLowerCase() === input.email.trim().toLowerCase()
+      (u) => u.username.toLowerCase().trim() === cleanUsername
     );
     if (exists) {
-      return { success: false, error: `User ID "${cleanUsername}" or email is already registered.` };
+      return { success: false, error: `User ID "@${cleanUsername}" is already registered. Every user must have a unique User ID.` };
     }
 
     const newUser: UserAccount = {
@@ -401,7 +456,7 @@ class SecurityMonitoringService {
       username: cleanUsername,
       name: input.name.trim() || cleanUsername,
       email: input.email.trim() || `${cleanUsername}@mybimi.jp`,
-      passwordHash: input.password,
+      passwordHash: input.password.trim(),
       role: input.role,
       assigned_store_id: input.assigned_store_id,
       is_active: true,
@@ -453,11 +508,13 @@ class SecurityMonitoringService {
     if (updates.username && updates.username.trim().toLowerCase() !== user.username.toLowerCase()) {
       const cleanUsername = updates.username.trim().toLowerCase();
       if (!cleanUsername) return { success: false, error: 'User ID cannot be empty.' };
+      if (cleanUsername.includes(' ')) return { success: false, error: 'User ID cannot contain spaces.' };
+      if (cleanUsername.length < 3) return { success: false, error: 'User ID must be at least 3 characters.' };
       const exists = this.users.some(
-        (u) => u.id !== userId && u.username.toLowerCase() === cleanUsername
+        (u) => u.id !== userId && u.username.toLowerCase().trim() === cleanUsername
       );
       if (exists) {
-        return { success: false, error: `User ID "@${cleanUsername}" is already taken.` };
+        return { success: false, error: `User ID "@${cleanUsername}" is already taken by another account. Every user must have a unique User ID.` };
       }
       user.username = cleanUsername;
     }
@@ -590,7 +647,7 @@ class SecurityMonitoringService {
     return this.toggleUserActive(userId, editorName);
   }
 
-  public deleteUser(userId: string): { success: boolean; error?: string } {
+  public deleteUser(userId: string, editorName = 'tohriyo'): { success: boolean; error?: string } {
     this.init();
     const user = this.users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User not found.' };
@@ -600,6 +657,18 @@ class SecurityMonitoringService {
 
     this.users = this.users.filter((u) => u.id !== userId);
     this.saveUsers();
+
+    this.recordDataEdit({
+      entity_type: 'user',
+      entity_id: user.id,
+      entity_name: user.username,
+      action: 'DELETE',
+      description: `User account "${user.username}" was deleted by ${editorName}.`,
+      user_id: editorName.toLowerCase(),
+      user_name: editorName,
+      user_role: 'ADMIN',
+    });
+
     return { success: true };
   }
 
@@ -724,17 +793,19 @@ class SecurityMonitoringService {
     this.init();
     const cleanUsername = input.username.trim().toLowerCase();
     if (!cleanUsername) return { success: false, error: 'User ID / Username is required.' };
+    if (cleanUsername.includes(' ')) return { success: false, error: 'User ID cannot contain spaces.' };
+    if (cleanUsername.length < 3) return { success: false, error: 'User ID must be at least 3 characters.' };
     if (!input.password || input.password.length < 4) {
       return { success: false, error: 'Password must be at least 4 characters.' };
     }
 
     const exists = this.users.some(
       (u) =>
-        u.username.toLowerCase() === cleanUsername ||
-        (input.email && u.email.toLowerCase() === input.email.trim().toLowerCase())
+        u.username.toLowerCase().trim() === cleanUsername ||
+        (input.email && u.email.toLowerCase().trim() === input.email.trim().toLowerCase())
     );
     if (exists) {
-      return { success: false, error: `User ID "${cleanUsername}" or email is already registered.` };
+      return { success: false, error: `User ID "@${cleanUsername}" or email is already registered. Usernames must be unique.` };
     }
 
     const newUser: UserAccount = {

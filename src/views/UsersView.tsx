@@ -23,6 +23,7 @@ import {
   Copy,
   Terminal,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -245,24 +246,76 @@ export const UsersView: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = (targetUser: UserAccount) => {
+    if (targetUser.username.toLowerCase() === 'tohriyo' || targetUser.username.toLowerCase() === 'sachou') {
+      addToast({
+        type: 'error',
+        title: 'Action Prohibited',
+        message: 'Core system accounts (tohriyo, sachou) cannot be deleted.',
+      });
+      return;
+    }
+
+    const confirmDelete = window.confirm(
+      `Are you sure you want to permanently delete user @${targetUser.username} (${targetUser.name})? This action cannot be undone.`
+    );
+    if (!confirmDelete) return;
+
+    const res = securityMonitoringService.deleteUser(
+      targetUser.id,
+      profile?.name || profile?.username || 'tohriyo'
+    );
+
+    if (res.success) {
+      loadUsers();
+      addToast({
+        type: 'info',
+        title: 'User Deleted',
+        message: `Account @${targetUser.username} was permanently removed.`,
+      });
+    } else {
+      addToast({
+        type: 'error',
+        title: 'Delete Failed',
+        message: res.error || 'Failed to delete user account.',
+      });
+    }
+  };
+
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
 
-    if (!formUsername.trim()) {
+    const cleanUsername = formUsername.trim().toLowerCase();
+    if (!cleanUsername) {
       setFormError('User ID (Username) is required.');
       return;
     }
-    if (!formPassword || formPassword.length < 4) {
+    if (cleanUsername.length < 3) {
+      setFormError('User ID must be at least 3 characters.');
+      return;
+    }
+    if (/\s/.test(cleanUsername)) {
+      setFormError('User ID cannot contain spaces.');
+      return;
+    }
+    const exists = userList.some(
+      (u) => u.username.toLowerCase().trim() === cleanUsername
+    );
+    if (exists) {
+      setFormError(`User ID "@${cleanUsername}" is already taken. Every user must have a unique User ID.`);
+      return;
+    }
+    if (!formPassword || formPassword.trim().length < 4) {
       setFormError('Password must be at least 4 characters.');
       return;
     }
 
     const res = securityMonitoringService.createUser({
-      username: formUsername,
-      name: formName || formUsername,
-      email: formEmail || `${formUsername.toLowerCase().trim()}@mybimi.jp`,
-      password: formPassword,
+      username: cleanUsername,
+      name: formName.trim() || cleanUsername,
+      email: formEmail.trim() || `${cleanUsername}@mybimi.jp`,
+      password: formPassword.trim(),
       role: formRole,
       assigned_store_id: formStoreId || undefined,
       is_developer: formIsDeveloper,
@@ -313,15 +366,31 @@ export const UsersView: React.FC = () => {
     if (!editingUserId) return;
     setEditError(null);
 
-    if (!editUsername.trim()) {
+    const cleanUsername = editUsername.trim().toLowerCase();
+    if (!cleanUsername) {
       setEditError('User ID is required.');
+      return;
+    }
+    if (cleanUsername.length < 3) {
+      setEditError('User ID must be at least 3 characters.');
+      return;
+    }
+    if (/\s/.test(cleanUsername)) {
+      setEditError('User ID cannot contain spaces.');
+      return;
+    }
+    const duplicate = userList.some(
+      (u) => u.id !== editingUserId && u.username.toLowerCase().trim() === cleanUsername
+    );
+    if (duplicate) {
+      setEditError(`User ID "@${cleanUsername}" is already used by another user. Usernames must be unique.`);
       return;
     }
     if (!editName.trim()) {
       setEditError('Display Name is required.');
       return;
     }
-    if (editPassword && editPassword.length < 4) {
+    if (editPassword && editPassword.trim().length < 4) {
       setEditError('Password must be at least 4 characters.');
       return;
     }
@@ -329,10 +398,10 @@ export const UsersView: React.FC = () => {
     const res = securityMonitoringService.updateUserProfile(
       editingUserId,
       {
-        username: editUsername,
-        name: editName,
-        email: editEmail,
-        password: editPassword,
+        username: cleanUsername,
+        name: editName.trim(),
+        email: editEmail.trim(),
+        password: editPassword.trim(),
         role: editRole,
         assigned_store_id: editStoreId || null,
         is_active: editIsActive,
@@ -765,7 +834,7 @@ export const UsersView: React.FC = () => {
                   </div>
 
                   {/* Account status toggle */}
-                  {!isCoreTohriyo && role === 'ADMIN' && (
+                  {!isCoreTohriyo && (isDeveloper || role === 'ADMIN') && (
                     <button
                       onClick={() => handleToggleStatus(u)}
                       title={u.is_active ? 'Deactivate user' : 'Activate user'}
@@ -776,6 +845,18 @@ export const UsersView: React.FC = () => {
                       }`}
                     >
                       <Power className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {/* Delete user account */}
+                  {!isCoreTohriyo && !isCoreSachou && !isSelf && (isDeveloper || role === 'ADMIN') && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteUser(u)}
+                      title={`Permanently delete user @${u.username}`}
+                      className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:border-rose-200 text-xs cursor-pointer transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
