@@ -81,6 +81,7 @@ export const UsersView: React.FC = () => {
 
   const canApprove =
     role === 'ADMIN' ||
+    profile?.username?.toLowerCase() === 'admin' ||
     profile?.username?.toLowerCase() === 'sachou' ||
     profile?.username?.toLowerCase() === 'tohriyo' ||
     role === 'MANAGER' ||
@@ -247,11 +248,15 @@ export const UsersView: React.FC = () => {
   };
 
   const handleDeleteUser = (targetUser: UserAccount) => {
-    if (targetUser.username.toLowerCase() === 'tohriyo' || targetUser.username.toLowerCase() === 'sachou') {
+    if (
+      targetUser.username.toLowerCase() === 'tohriyo' ||
+      targetUser.username.toLowerCase() === 'admin' ||
+      targetUser.username.toLowerCase() === 'sachou'
+    ) {
       addToast({
         type: 'error',
         title: 'Action Prohibited',
-        message: 'Core system accounts (tohriyo, sachou) cannot be deleted.',
+        message: 'Core system accounts (tohriyo, admin) cannot be deleted.',
       });
       return;
     }
@@ -644,7 +649,7 @@ export const UsersView: React.FC = () => {
           {userList.map((u) => {
             const isSelf = profile?.username?.toLowerCase() === u.username.toLowerCase();
             const isCoreTohriyo = u.username.toLowerCase() === 'tohriyo';
-            const isCoreSachou = u.username.toLowerCase() === 'sachou';
+            const isCoreAdmin = u.username.toLowerCase() === 'admin' || u.username.toLowerCase() === 'sachou';
             const assignedStore = stores.find((s) => s.id === u.assigned_store_id);
 
             return (
@@ -660,7 +665,7 @@ export const UsersView: React.FC = () => {
                     className={`w-10 h-10 rounded-full font-bold text-xs flex items-center justify-center shrink-0 ${
                       isCoreTohriyo
                         ? 'bg-amber-500 text-white shadow-xs'
-                        : isCoreSachou
+                        : isCoreAdmin
                         ? 'bg-blue-600 text-white shadow-xs'
                         : 'bg-slate-900 text-white'
                     }`}
@@ -684,9 +689,9 @@ export const UsersView: React.FC = () => {
                           DEVELOPER
                         </span>
                       )}
-                      {isCoreSachou && (
+                      {isCoreAdmin && (
                         <span className="font-mono text-[9px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">
-                          CORE MANAGER
+                          CORE ADMIN
                         </span>
                       )}
                       {u.approval_status === 'PENDING' && (
@@ -699,7 +704,7 @@ export const UsersView: React.FC = () => {
                           REJECTED
                         </span>
                       )}
-                      {u.approval_status === 'APPROVED' && !isCoreTohriyo && !isCoreSachou && (
+                      {u.approval_status === 'APPROVED' && !isCoreTohriyo && !isCoreAdmin && (
                         <span className="font-mono text-[9px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded border border-emerald-200">
                           APPROVED
                         </span>
@@ -849,7 +854,7 @@ export const UsersView: React.FC = () => {
                   )}
 
                   {/* Delete user account */}
-                  {!isCoreTohriyo && !isCoreSachou && !isSelf && (isDeveloper || role === 'ADMIN') && (
+                  {!isCoreTohriyo && !isCoreAdmin && !isSelf && (isDeveloper || role === 'ADMIN') && (
                     <button
                       type="button"
                       onClick={() => handleDeleteUser(u)}
@@ -882,8 +887,8 @@ export const UsersView: React.FC = () => {
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60 text-[11px] text-slate-500 font-medium">
                 <th className="py-3 px-4 font-medium">SYSTEM PERMISSION</th>
-                <th className="py-3 px-4 font-medium text-center">ADMIN (tohriyo)</th>
-                <th className="py-3 px-4 font-medium text-center">MANAGER (sachou)</th>
+                <th className="py-3 px-4 font-medium text-center">ADMIN (tohriyo / admin)</th>
+                <th className="py-3 px-4 font-medium text-center">MANAGER</th>
                 <th className="py-3 px-4 font-medium text-center">STORE STAFF</th>
                 <th className="py-3 px-4 font-medium text-center">VIEWER</th>
               </tr>

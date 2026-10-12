@@ -351,8 +351,7 @@ export const LoginView: React.FC = () => {
                   Approval Required
                 </p>
                 <p className="text-[11px] text-amber-700 mt-0.5">
-                  New accounts require authorization by <strong>Sachou (Manager)</strong> or{' '}
-                  <strong>Admin</strong> before login access is activated.
+                  New accounts require authorization by <strong>Admin (Hossain Anwar / Tohriyo)</strong> before login access is activated.
                 </p>
               </div>
             </div>
@@ -499,13 +498,13 @@ export const LoginView: React.FC = () => {
             <div className="p-4 bg-amber-50/80 border border-amber-200 rounded-2xl text-left space-y-2">
               <div className="flex items-center gap-2 text-xs font-bold text-amber-900">
                 <Clock className="w-4 h-4 text-amber-600" />
-                <span>Next Step: Sachou or Admin Approval</span>
+                <span>Next Step: Admin Approval</span>
               </div>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                As per company security policy, new Product Studio accounts cannot log in until approved by <strong>Sachou (Manager)</strong> or <strong>Admin (Tohriyo)</strong>.
+                As per company security policy, new Product Studio accounts cannot log in until approved by <strong>Admin (Hossain Anwar / Tohriyo)</strong>.
               </p>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                Please inform Sachou or Admin to approve your User ID in their <strong>Users & Access Control</strong> panel.
+                Please inform Admin to approve your User ID in their <strong>Users & Access Control</strong> panel.
               </p>
             </div>
 
@@ -544,7 +543,7 @@ export const LoginView: React.FC = () => {
                   <strong>Tohriyo (Super Admin)</strong> - Can reset any account credential.
                 </li>
                 <li>
-                  <strong>Sachou (Manager)</strong> - Can verify operational access and approve updates.
+                  <strong>Hossain Anwar (Admin)</strong> - Can verify operational access and approve updates.
                 </li>
               </ul>
               <p className="text-[11px] text-slate-500 pt-1">

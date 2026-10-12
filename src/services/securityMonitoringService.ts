@@ -133,13 +133,13 @@ const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
     last_login_at: '2026-10-08T00:00:00Z',
   },
   {
-    id: 'usr-sachou-02',
-    username: 'sachou',
-    name: 'Sachou',
+    id: 'usr-admin-02',
+    username: 'admin',
+    name: 'Hossain Anwar',
     email: 'sachou@mybimi.jp',
     passwordHash: 'nahian1111',
-    role: 'MANAGER',
-    is_super_admin: false,
+    role: 'ADMIN',
+    is_super_admin: true,
     is_developer: false,
     is_active: true,
     approval_status: 'APPROVED',
@@ -171,49 +171,64 @@ class SecurityMonitoringService {
       const cleanUsername = u.username.trim().toLowerCase();
       if (!cleanUsername) continue;
 
-      if (!seenUsernames.has(cleanUsername)) {
-        seenUsernames.set(cleanUsername, {
+      // Migrate legacy 'sachou' user to 'admin' (Hossain Anwar)
+      const targetUsername = cleanUsername === 'sachou' ? 'admin' : cleanUsername;
+
+      if (!seenUsernames.has(targetUsername)) {
+        seenUsernames.set(targetUsername, {
           ...u,
-          username: cleanUsername,
-          name: u.name?.trim() || cleanUsername,
-          email: u.email?.trim() || `${cleanUsername}@mybimi.jp`,
-          passwordHash: u.passwordHash?.trim() || 'Kurosaki123',
-          role: u.role || 'STORE_STAFF',
+          username: targetUsername,
+          name: targetUsername === 'admin' ? 'Hossain Anwar' : (u.name?.trim() || targetUsername),
+          email: targetUsername === 'admin' ? 'sachou@mybimi.jp' : (u.email?.trim() || `${targetUsername}@mybimi.jp`),
+          passwordHash: targetUsername === 'admin' ? 'nahian1111' : (u.passwordHash?.trim() || 'Kurosaki123'),
+          role: targetUsername === 'admin' ? 'ADMIN' : (u.role || 'STORE_STAFF'),
           is_active: u.is_active ?? true,
           approval_status: u.approval_status || 'APPROVED',
         });
       } else {
         // Merge duplicates: preserve custom/stronger password if the existing one is default
-        const existing = seenUsernames.get(cleanUsername)!;
-        if ((!existing.passwordHash || existing.passwordHash === 'Kurosaki123') && u.passwordHash && u.passwordHash !== 'Kurosaki123') {
-          existing.passwordHash = u.passwordHash.trim();
+        const existing = seenUsernames.get(targetUsername)!;
+        if (targetUsername === 'admin') {
+          existing.name = 'Hossain Anwar';
+          existing.email = 'sachou@mybimi.jp';
+          existing.role = 'ADMIN';
+          existing.passwordHash = 'nahian1111';
+          existing.is_active = true;
+          existing.approval_status = 'APPROVED';
+        } else {
+          if ((!existing.passwordHash || existing.passwordHash === 'Kurosaki123') && u.passwordHash && u.passwordHash !== 'Kurosaki123') {
+            existing.passwordHash = u.passwordHash.trim();
+          }
+          if (u.is_developer) existing.is_developer = true;
+          if (u.is_super_admin) existing.is_super_admin = true;
+          if (u.role === 'ADMIN') existing.role = 'ADMIN';
+          else if (u.role === 'MANAGER' && existing.role !== 'ADMIN') existing.role = 'MANAGER';
+          if (u.is_active) existing.is_active = true;
+          if (u.approval_status === 'APPROVED') existing.approval_status = 'APPROVED';
         }
-        if (u.is_developer) existing.is_developer = true;
-        if (u.is_super_admin) existing.is_super_admin = true;
-        if (u.role === 'ADMIN') existing.role = 'ADMIN';
-        else if (u.role === 'MANAGER' && existing.role !== 'ADMIN') existing.role = 'MANAGER';
-        if (u.is_active) existing.is_active = true;
-        if (u.approval_status === 'APPROVED') existing.approval_status = 'APPROVED';
       }
     }
 
-    // Ensure core initial accounts (tohriyo, sachou) exist and are properly configured
+    // Ensure core initial accounts (tohriyo, admin) exist and are properly configured
     CORE_INITIAL_ACCOUNTS.forEach((core) => {
       const clean = core.username.toLowerCase();
       const existing = seenUsernames.get(clean);
       if (!existing) {
         seenUsernames.set(clean, { ...core });
       } else {
+        existing.name = core.name;
+        existing.email = core.email;
+        existing.passwordHash = core.passwordHash;
+        existing.role = core.role;
         existing.is_super_admin = core.is_super_admin;
         existing.is_developer = core.is_developer;
-        existing.role = core.role;
         existing.is_active = true;
         existing.approval_status = 'APPROVED';
-        if (!existing.passwordHash) {
-          existing.passwordHash = core.passwordHash;
-        }
       }
     });
+
+    // Guarantee removal of any legacy 'sachou' key so no double/duplicate accounts exist
+    seenUsernames.delete('sachou');
 
     return Array.from(seenUsernames.values());
   }
@@ -259,7 +274,7 @@ class SecurityMonitoringService {
         (edit.description.includes('PENDING_APPROVAL') || edit.user_role === 'APPLICANT')
       ) {
         const username = edit.entity_name.trim().toLowerCase();
-        if (!username || username === 'tohriyo' || username === 'sachou') return;
+        if (!username || username === 'tohriyo' || username === 'admin' || username === 'sachou') return;
 
         // Skip if user already exists
         const existing = this.users.find((u) => u.username.toLowerCase().trim() === username);
@@ -339,7 +354,10 @@ class SecurityMonitoringService {
     this.init();
     const query = usernameOrEmail.trim().toLowerCase();
     const user = this.users.find(
-      (u) => u.username.toLowerCase() === query || u.email.toLowerCase() === query
+      (u) =>
+        u.username.toLowerCase() === query ||
+        u.email.toLowerCase() === query ||
+        (query === 'sachou' && (u.username === 'admin' || u.email.toLowerCase() === 'sachou@mybimi.jp'))
     );
 
     if (!user) {
@@ -651,8 +669,8 @@ class SecurityMonitoringService {
     this.init();
     const user = this.users.find((u) => u.id === userId);
     if (!user) return { success: false, error: 'User not found.' };
-    if (user.username === 'tohriyo' || user.username === 'sachou') {
-      return { success: false, error: 'Core system accounts (tohriyo, sachou) cannot be deleted.' };
+    if (user.username === 'tohriyo' || user.username === 'admin' || user.username === 'sachou') {
+      return { success: false, error: 'Core system accounts (tohriyo, admin) cannot be deleted.' };
     }
 
     this.users = this.users.filter((u) => u.id !== userId);

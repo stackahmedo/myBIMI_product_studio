@@ -35,8 +35,8 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   },
   {
     email: 'sachou@mybimi.jp',
-    role: 'MANAGER',
-    name: 'Sachou (Store Management)',
+    role: 'ADMIN',
+    name: 'Hossain Anwar (Admin)',
     description: 'Catalog management, pricing overrides, inventory & supplier logistics',
   },
 ];
