@@ -53,6 +53,25 @@ if (typeof localStorage !== 'undefined' && !localStorage.getItem(SHIN_KOIWA_MIGR
   }
 }
 
+// Automatic migration to strip random placeholder images
+const PURGE_RANDOM_IMAGES_FLAG = 'bimi_purge_random_images_v1';
+if (typeof localStorage !== 'undefined' && !localStorage.getItem(PURGE_RANDOM_IMAGES_FLAG)) {
+  try {
+    const rawProds = localStorage.getItem(STORAGE_PREFIX + 'products');
+    if (rawProds) {
+      const prods = JSON.parse(rawProds);
+      const cleaned = prods.map((p: any) => ({
+        ...p,
+        image_url: p.image_url && p.image_url.includes('unsplash.com') ? '' : (p.image_url || ''),
+      }));
+      localStorage.setItem(STORAGE_PREFIX + 'products', JSON.stringify(cleaned));
+    }
+    localStorage.setItem(PURGE_RANDOM_IMAGES_FLAG, 'true');
+  } catch {
+    // ignore
+  }
+}
+
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(STORAGE_PREFIX + key);
@@ -132,7 +151,21 @@ class ProductStudioDataService {
 
   constructor() {
     this.ensureShinKoiwaProducts();
+    this.purgeRandomImages();
     this.ensureProductPublishingStates();
+  }
+
+  private purgeRandomImages() {
+    let modified = false;
+    this.products.forEach((p) => {
+      if (p.image_url && p.image_url.includes('unsplash.com')) {
+        p.image_url = '';
+        modified = true;
+      }
+    });
+    if (modified) {
+      this.persist();
+    }
   }
 
   private ensureShinKoiwaProducts() {

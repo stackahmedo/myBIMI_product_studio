@@ -199,10 +199,10 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
 
   // Safe image URL protocol validator
   const sanitizeImageUrl = (rawUrl?: string): string => {
-    if (!rawUrl) return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80';
+    if (!rawUrl) return '';
     const clean = String(rawUrl).trim();
     if (/^https?:\/\//i.test(clean)) return clean;
-    return 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80';
+    return '';
   };
 
   // Parse raw sheet data into typed product rows
@@ -388,7 +388,7 @@ export const BulkImportModal: React.FC<BulkImportModalProps> = ({
           subcategory: 'General',
           description,
           internal_notes: `Bulk imported on ${new Date().toLocaleDateString()}`,
-          image_url: sanitizeImageUrl(n['imageurl'] || n['image'] || n['photo'] || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=600&q=80'),
+          image_url: sanitizeImageUrl(n['imageurl'] || n['image'] || n['photo']),
           country_of_origin,
           weight_volume,
           unit,
