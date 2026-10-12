@@ -30,8 +30,8 @@ export const DEMO_ACCOUNTS: DemoAccount[] = [
   {
     email: 'tohriyo@mybimi.jp',
     role: 'ADMIN',
-    name: 'Tohriyo (Super Admin)',
-    description: 'Unrestricted central control, security surveillance & role setup',
+    name: 'Tohriyo (Developer & Super Admin)',
+    description: 'Developer control, credential visibility, profile editing & central surveillance',
   },
   {
     email: 'sachou@mybimi.jp',
@@ -49,6 +49,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   isSuperAdmin: boolean;
+  isDeveloper: boolean;
   isConfigured: boolean;
   authError: string | null;
   session: Session | null;
@@ -105,6 +106,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isSuperAdmin = Boolean(
     profile?.username?.toLowerCase() === 'tohriyo' || profile?.is_super_admin || role === 'ADMIN'
   );
+  const isDeveloper = Boolean(
+    profile?.username?.toLowerCase() === 'tohriyo' ||
+    profile?.is_developer ||
+    (profile?.is_super_admin && (profile?.name?.toLowerCase().includes('tohriyo') || profile?.email?.toLowerCase().includes('tohriyo')))
+  );
 
   // Restore authenticated session on mount
   useEffect(() => {
@@ -134,6 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               last_login_at: match.last_login_at || new Date().toISOString(),
               username: match.username,
               is_super_admin: match.is_super_admin,
+              is_developer: match.is_developer ?? (match.username.toLowerCase() === 'tohriyo'),
             };
             setProfile(activeProfile);
             setRole(match.role);
@@ -339,6 +346,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isAuthenticated,
         isSuperAdmin,
+        isDeveloper,
         isConfigured,
         authError,
         session,

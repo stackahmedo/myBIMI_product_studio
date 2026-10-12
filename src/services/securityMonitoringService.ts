@@ -19,6 +19,7 @@ export interface UserAccount {
   passwordHash: string; // Plain/hashed comparison for application RBAC
   role: AppRole;
   is_super_admin?: boolean;
+  is_developer?: boolean;
   assigned_store_id?: StoreId;
   is_active: boolean;
   approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -125,6 +126,7 @@ const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
     passwordHash: 'Kurosaki',
     role: 'ADMIN',
     is_super_admin: true,
+    is_developer: true,
     is_active: true,
     approval_status: 'APPROVED',
     created_at: '2026-10-01T00:00:00Z',
@@ -138,6 +140,7 @@ const CORE_INITIAL_ACCOUNTS: UserAccount[] = [
     passwordHash: 'nahian1111',
     role: 'MANAGER',
     is_super_admin: false,
+    is_developer: false,
     is_active: true,
     approval_status: 'APPROVED',
     created_at: '2026-10-01T00:00:00Z',
@@ -175,6 +178,7 @@ class SecurityMonitoringService {
             // Keep credentials intact and approved
             parsed[idx].passwordHash = core.passwordHash;
             parsed[idx].is_super_admin = core.is_super_admin;
+            parsed[idx].is_developer = core.is_developer;
             parsed[idx].is_active = true;
             parsed[idx].approval_status = 'APPROVED';
           }
@@ -348,6 +352,7 @@ class SecurityMonitoringService {
       last_login_at: user.last_login_at,
       username: user.username,
       is_super_admin: user.is_super_admin,
+      is_developer: user.is_developer ?? (user.username.toLowerCase() === 'tohriyo'),
     };
 
     // Record session & activity
@@ -375,6 +380,7 @@ class SecurityMonitoringService {
     password: string;
     role: AppRole;
     assigned_store_id?: StoreId;
+    is_developer?: boolean;
   }): { success: boolean; error?: string; user?: UserAccount } {
     this.init();
     const cleanUsername = input.username.trim().toLowerCase();
@@ -399,6 +405,8 @@ class SecurityMonitoringService {
       role: input.role,
       assigned_store_id: input.assigned_store_id,
       is_active: true,
+      approval_status: 'APPROVED',
+      is_developer: input.is_developer ?? (cleanUsername === 'tohriyo'),
       created_at: new Date().toISOString(),
       last_login_at: undefined,
     };
@@ -418,6 +426,101 @@ class SecurityMonitoringService {
     });
 
     return { success: true, user: newUser };
+  }
+
+  public updateUserProfile(
+    userId: string,
+    updates: {
+      username?: string;
+      name?: string;
+      email?: string;
+      password?: string;
+      role?: AppRole;
+      assigned_store_id?: StoreId | null;
+      is_active?: boolean;
+      approval_status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+      is_developer?: boolean;
+    },
+    editorName = 'tohriyo'
+  ): { success: boolean; error?: string; user?: UserAccount } {
+    this.init();
+    const user = this.users.find((u) => u.id === userId);
+    if (!user) return { success: false, error: 'User account not found.' };
+
+    const isCoreTohriyo = user.username.toLowerCase() === 'tohriyo';
+
+    // Check username uniqueness if changing
+    if (updates.username && updates.username.trim().toLowerCase() !== user.username.toLowerCase()) {
+      const cleanUsername = updates.username.trim().toLowerCase();
+      if (!cleanUsername) return { success: false, error: 'User ID cannot be empty.' };
+      const exists = this.users.some(
+        (u) => u.id !== userId && u.username.toLowerCase() === cleanUsername
+      );
+      if (exists) {
+        return { success: false, error: `User ID "@${cleanUsername}" is already taken.` };
+      }
+      user.username = cleanUsername;
+    }
+
+    if (updates.name !== undefined && updates.name.trim()) {
+      user.name = updates.name.trim();
+    }
+
+    if (updates.email !== undefined && updates.email.trim()) {
+      user.email = updates.email.trim();
+    }
+
+    if (updates.password && updates.password.trim()) {
+      if (updates.password.trim().length < 4) {
+        return { success: false, error: 'Password must be at least 4 characters.' };
+      }
+      user.passwordHash = updates.password.trim();
+    }
+
+    if (updates.role !== undefined) {
+      if (isCoreTohriyo && updates.role !== 'ADMIN') {
+        return { success: false, error: 'The primary super admin account cannot be demoted.' };
+      }
+      user.role = updates.role;
+    }
+
+    if (updates.assigned_store_id !== undefined) {
+      user.assigned_store_id = updates.assigned_store_id || undefined;
+    }
+
+    if (updates.is_active !== undefined) {
+      if (isCoreTohriyo && !updates.is_active) {
+        return { success: false, error: 'The primary super admin account cannot be deactivated.' };
+      }
+      user.is_active = updates.is_active;
+    }
+
+    if (updates.approval_status !== undefined) {
+      user.approval_status = updates.approval_status;
+      if (updates.approval_status === 'APPROVED') {
+        user.is_active = true;
+      }
+    }
+
+    if (updates.is_developer !== undefined) {
+      user.is_developer = updates.is_developer;
+    }
+
+    this.saveUsers();
+
+    // Log the edit
+    this.recordDataEdit({
+      entity_type: 'user',
+      entity_id: user.id,
+      entity_name: user.username,
+      action: 'UPDATE',
+      description: `Updated profile for user "${user.username}" by ${editorName}.`,
+      user_id: editorName.toLowerCase(),
+      user_name: editorName,
+      user_role: 'ADMIN',
+    });
+
+    return { success: true, user };
   }
 
   public updateUserRole(userId: string, newRole: AppRole, editorName = 'tohriyo'): { success: boolean; error?: string } {

@@ -19,6 +19,10 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Copy,
+  Terminal,
+  Sparkles,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
@@ -30,12 +34,31 @@ import { AppRole, StoreId } from '../types/database';
 
 export const UsersView: React.FC = () => {
   const { stores, addToast } = useApp();
-  const { profile, role } = useAuth();
+  const { profile, role, isDeveloper: authIsDeveloper } = useAuth();
 
   const [userList, setUserList] = useState<UserAccount[]>([]);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Form state
+  // Password visibility state (Developer inspection)
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [revealAllPasswords, setRevealAllPasswords] = useState(false);
+
+  // Edit User Modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editUsername, setEditUsername] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [editRole, setEditRole] = useState<AppRole>('STORE_STAFF');
+  const [editStoreId, setEditStoreId] = useState<StoreId | ''>('');
+  const [editIsActive, setEditIsActive] = useState<boolean>(true);
+  const [editApprovalStatus, setEditApprovalStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED'>('APPROVED');
+  const [editIsDeveloper, setEditIsDeveloper] = useState<boolean>(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Create Form state
   const [formUsername, setFormUsername] = useState('');
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
@@ -43,21 +66,68 @@ export const UsersView: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [formRole, setFormRole] = useState<AppRole>('MANAGER');
   const [formStoreId, setFormStoreId] = useState<StoreId | ''>('');
+  const [formIsDeveloper, setFormIsDeveloper] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const isTohriyo =
+    authIsDeveloper ||
     profile?.username?.toLowerCase() === 'tohriyo' ||
+    profile?.is_developer === true ||
     profile?.is_super_admin === true ||
     (role === 'ADMIN' && profile?.name?.toLowerCase().includes('tohriyo'));
+
+  const isDeveloper = isTohriyo;
 
   const canApprove =
     role === 'ADMIN' ||
     profile?.username?.toLowerCase() === 'sachou' ||
     profile?.username?.toLowerCase() === 'tohriyo' ||
     role === 'MANAGER' ||
-    profile?.is_super_admin;
+    profile?.is_super_admin ||
+    isDeveloper;
 
   const [assignedRolePending, setAssignedRolePending] = useState<Record<string, AppRole>>({});
+
+  const togglePasswordVisibility = (userId: string) => {
+    setVisiblePasswords((prev) => ({
+      ...prev,
+      [userId]: !prev[userId],
+    }));
+  };
+
+  const handleToggleAllPasswords = () => {
+    const next = !revealAllPasswords;
+    setRevealAllPasswords(next);
+    if (next) {
+      const map: Record<string, boolean> = {};
+      userList.forEach((u) => {
+        map[u.id] = true;
+      });
+      setVisiblePasswords(map);
+    } else {
+      setVisiblePasswords({});
+    }
+  };
+
+  const handleCopyPassword = (pwd: string, username: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(pwd);
+      addToast({
+        type: 'success',
+        title: 'Password Copied',
+        message: `Password for @${username} copied to clipboard.`,
+      });
+    }
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    let pwd = '';
+    for (let i = 0; i < 8; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return pwd;
+  };
 
   const loadUsers = () => {
     securityMonitoringService.reconcilePendingFromEdits();
@@ -195,6 +265,7 @@ export const UsersView: React.FC = () => {
       password: formPassword,
       role: formRole,
       assigned_store_id: formStoreId || undefined,
+      is_developer: formIsDeveloper,
     });
 
     if (!res.success) {
@@ -204,8 +275,8 @@ export const UsersView: React.FC = () => {
 
     addToast({
       type: 'success',
-      title: 'User Created Successfully',
-      message: `User ID @${res.user?.username} can now log into Product Studio.`,
+      title: 'User Profile Created',
+      message: `User ID @${res.user?.username} created and ready to log in.`,
     });
 
     // Reset & close
@@ -213,9 +284,77 @@ export const UsersView: React.FC = () => {
     setFormName('');
     setFormEmail('');
     setFormPassword('');
+    setShowPassword(false);
     setFormRole('MANAGER');
     setFormStoreId('');
+    setFormIsDeveloper(false);
     setIsCreateModalOpen(false);
+    loadUsers();
+  };
+
+  const handleOpenEditModal = (targetUser: UserAccount) => {
+    setEditingUserId(targetUser.id);
+    setEditUsername(targetUser.username);
+    setEditName(targetUser.name);
+    setEditEmail(targetUser.email);
+    setEditPassword(targetUser.passwordHash || '');
+    setShowEditPassword(false);
+    setEditRole(targetUser.role);
+    setEditStoreId(targetUser.assigned_store_id || '');
+    setEditIsActive(targetUser.is_active);
+    setEditApprovalStatus(targetUser.approval_status || 'APPROVED');
+    setEditIsDeveloper(Boolean(targetUser.is_developer || targetUser.username.toLowerCase() === 'tohriyo'));
+    setEditError(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserId) return;
+    setEditError(null);
+
+    if (!editUsername.trim()) {
+      setEditError('User ID is required.');
+      return;
+    }
+    if (!editName.trim()) {
+      setEditError('Display Name is required.');
+      return;
+    }
+    if (editPassword && editPassword.length < 4) {
+      setEditError('Password must be at least 4 characters.');
+      return;
+    }
+
+    const res = securityMonitoringService.updateUserProfile(
+      editingUserId,
+      {
+        username: editUsername,
+        name: editName,
+        email: editEmail,
+        password: editPassword,
+        role: editRole,
+        assigned_store_id: editStoreId || null,
+        is_active: editIsActive,
+        approval_status: editApprovalStatus,
+        is_developer: editIsDeveloper,
+      },
+      profile?.name || profile?.username || 'tohriyo'
+    );
+
+    if (!res.success) {
+      setEditError(res.error || 'Failed to update user profile.');
+      return;
+    }
+
+    addToast({
+      type: 'success',
+      title: 'Profile Updated',
+      message: `User profile for @${res.user?.username} was successfully saved.`,
+    });
+
+    setIsEditModalOpen(false);
+    setEditingUserId(null);
     loadUsers();
   };
 
@@ -237,22 +376,23 @@ export const UsersView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-xl font-bold tracking-tight text-slate-900">
               Users & Access Role Control
             </h1>
-            {isTohriyo && (
-              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
-                tohriyo Control Enabled
+            {isDeveloper && (
+              <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-900 border border-indigo-300 flex items-center gap-1 shadow-2xs">
+                <Terminal className="w-3 h-3 text-indigo-600" />
+                Developer Privilege Active (@tohriyo)
               </span>
             )}
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Manage authenticated User IDs, set access roles, and assign store locations.
+            Manage authenticated User IDs, inspect user passwords, edit user profiles, and assign store locations.
           </p>
         </div>
 
-        {role === 'ADMIN' && (
+        {(role === 'ADMIN' || isDeveloper) && (
           <button
             onClick={() => {
               setFormError(null);
@@ -261,10 +401,42 @@ export const UsersView: React.FC = () => {
             className="inline-flex items-center gap-2 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
           >
             <UserPlus className="w-4 h-4 text-emerald-400" />
-            <span>Create User ID & Password</span>
+            <span>Create User Profile & Password</span>
           </button>
         )}
       </div>
+
+      {/* Developer Password Inspector Banner */}
+      {isDeveloper && (
+        <div className="p-3.5 bg-gradient-to-r from-indigo-50/90 via-slate-50 to-amber-50/70 border border-indigo-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-2xs">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+              <Terminal className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-indigo-950 flex items-center gap-1.5 flex-wrap">
+                <span>Developer Mode: Password Visibility & Profile Control Enabled</span>
+                <span className="text-[9px] font-mono font-bold bg-indigo-200 text-indigo-900 px-1.5 py-0.5 rounded">
+                  @tohriyo
+                </span>
+              </p>
+              <p className="text-[11px] text-indigo-900/80 mt-0.5">
+                As system developer (@tohriyo), you can inspect other users' passwords in cleartext, edit profiles, and create instant credentials.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={handleToggleAllPasswords}
+              className="px-3 py-1.5 bg-white border border-indigo-200 hover:bg-indigo-50 text-indigo-900 rounded-lg font-mono text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+            >
+              {revealAllPasswords ? <EyeOff className="w-3.5 h-3.5 text-indigo-700" /> : <Eye className="w-3.5 h-3.5 text-indigo-700" />}
+              <span>{revealAllPasswords ? 'Mask Passwords' : 'Show All Passwords'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Security Notice */}
       <div className="p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl flex items-start gap-3 text-xs text-slate-600">
@@ -438,6 +610,11 @@ export const UsersView: React.FC = () => {
                           CORE SUPER ADMIN
                         </span>
                       )}
+                      {(isCoreTohriyo || u.is_developer) && (
+                        <span className="font-mono text-[9px] font-bold text-indigo-800 bg-indigo-100 px-1.5 py-0.5 rounded border border-indigo-300">
+                          DEVELOPER
+                        </span>
+                      )}
                       {isCoreSachou && (
                         <span className="font-mono text-[9px] font-bold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">
                           CORE MANAGER
@@ -486,8 +663,39 @@ export const UsersView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Role setup control & Status */}
-                <div className="flex items-center gap-3 self-end sm:self-center">
+                {/* Developer Password Inspector (ONLY visible to tohriyo / developer) */}
+                {isDeveloper && (
+                  <div className="flex items-center gap-1.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/90 rounded-lg px-2.5 py-1 text-xs self-start sm:self-center transition-colors">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span className="text-[10px] text-slate-400 font-mono font-semibold">PWD:</span>
+                    <span className="font-mono text-[11px] font-bold text-slate-900 select-all min-w-[70px]">
+                      {visiblePasswords[u.id] || revealAllPasswords ? u.passwordHash : '••••••••'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => togglePasswordVisibility(u.id)}
+                      title={visiblePasswords[u.id] || revealAllPasswords ? 'Mask password' : 'Show password'}
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-white rounded transition-colors cursor-pointer"
+                    >
+                      {visiblePasswords[u.id] || revealAllPasswords ? (
+                        <EyeOff className="w-3.5 h-3.5 text-amber-700" />
+                      ) : (
+                        <Eye className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyPassword(u.passwordHash, u.username)}
+                      title="Copy password to clipboard"
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-white rounded transition-colors cursor-pointer"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Role setup control, Edit Profile & Status */}
+                <div className="flex items-center gap-2.5 self-end sm:self-center flex-wrap">
                   {/* Quick Approve / Reject for Pending Accounts */}
                   {u.approval_status === 'PENDING' && canApprove && (
                     <div className="flex items-center gap-1.5">
@@ -508,6 +716,19 @@ export const UsersView: React.FC = () => {
                         <span>Reject</span>
                       </button>
                     </div>
+                  )}
+
+                  {/* Edit Profile Action Button (Developer / Admin) */}
+                  {(isDeveloper || role === 'ADMIN') && (
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditModal(u)}
+                      className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/60 text-slate-700 hover:text-indigo-900 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                      title={`Edit profile for @${u.username}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-indigo-600" />
+                      <span className="hidden md:inline">Edit Profile</span>
+                    </button>
                   )}
 
                   {/* Role setup dropdown */}
@@ -626,6 +847,7 @@ export const UsersView: React.FC = () => {
       </div>
 
       {/* CREATE USER MODAL */}
+      {/* CREATE USER MODAL */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95">
@@ -633,10 +855,11 @@ export const UsersView: React.FC = () => {
               <div className="flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-slate-900" />
                 <h3 className="font-bold text-sm text-slate-900">
-                  Create User ID & Credentials
+                  Create User Profile & Credentials
                 </h3>
               </div>
               <button
+                type="button"
                 onClick={() => setIsCreateModalOpen(false)}
                 className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
@@ -646,7 +869,7 @@ export const UsersView: React.FC = () => {
 
             <form onSubmit={handleCreateUser} className="p-5 space-y-3.5 text-xs">
               {formError && (
-                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
                   {formError}
                 </div>
               )}
@@ -666,9 +889,19 @@ export const UsersView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Password *
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-slate-700">
+                    Password *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setFormPassword(generateRandomPassword())}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Generate</span>
+                  </button>
+                </div>
                 <div className="relative">
                   <input
                     type={showPassword ? 'text' : 'password'}
@@ -726,10 +959,10 @@ export const UsersView: React.FC = () => {
                     onChange={(e) => setFormRole(e.target.value as AppRole)}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
                   >
-                    <option value="MANAGER">MANAGER</option>
                     <option value="STORE_STAFF">STORE_STAFF</option>
-                    <option value="VIEWER">VIEWER</option>
+                    <option value="MANAGER">MANAGER</option>
                     <option value="ADMIN">ADMIN</option>
+                    <option value="VIEWER">VIEWER</option>
                   </select>
                 </div>
 
@@ -752,6 +985,22 @@ export const UsersView: React.FC = () => {
                 </div>
               </div>
 
+              {/* Developer Privilege Option */}
+              {isDeveloper && (
+                <label className="flex items-center gap-2 p-2 bg-indigo-50/70 border border-indigo-200/80 rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formIsDeveloper}
+                    onChange={(e) => setFormIsDeveloper(e.target.checked)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div className="text-[11px]">
+                    <span className="font-bold text-indigo-950">Grant Developer Status</span>
+                    <p className="text-[10px] text-indigo-800/80">Can inspect passwords and edit user profiles</p>
+                  </div>
+                </label>
+              )}
+
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -765,6 +1014,224 @@ export const UsersView: React.FC = () => {
                   className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl shadow-xs transition-colors cursor-pointer"
                 >
                   Create User
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT USER PROFILE MODAL */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in-50 zoom-in-95">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold">
+                  <Pencil className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    Edit User Profile: @{editUsername}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Modify profile information, credentials, and access role.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="p-5 space-y-3.5 text-xs">
+              {editError && (
+                <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+                  {editError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Display Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Full Name"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    User ID (Username) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editUsername}
+                    disabled={editUsername.toLowerCase() === 'tohriyo'}
+                    onChange={(e) => setEditUsername(e.target.value)}
+                    placeholder="Username"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-mono focus:outline-none focus:ring-1 focus:ring-slate-900 disabled:opacity-60"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Email Address
+                </label>
+                <input
+                  type="email"
+                  value={editEmail}
+                  onChange={(e) => setEditEmail(e.target.value)}
+                  placeholder="name@mybimi.jp"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-slate-700">
+                    Password / Reset Credentials
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEditPassword(generateRandomPassword())}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>Generate Random</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? 'text' : 'password'}
+                    minLength={4}
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    placeholder="Enter new password (min 4 chars)"
+                    className="w-full pl-3 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Assigned Role
+                  </label>
+                  <select
+                    value={editRole}
+                    disabled={editUsername.toLowerCase() === 'tohriyo'}
+                    onChange={(e) => setEditRole(e.target.value as AppRole)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="ADMIN">ADMIN (Full Access)</option>
+                    <option value="MANAGER">MANAGER (Operations)</option>
+                    <option value="STORE_STAFF">STORE_STAFF (Tags/Shelf)</option>
+                    <option value="VIEWER">VIEWER (Read Only)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Assigned Store Branch
+                  </label>
+                  <select
+                    value={editStoreId}
+                    onChange={(e) => setEditStoreId(e.target.value as StoreId)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                  >
+                    <option value="">Central Master HQ</option>
+                    {stores.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Account Status
+                  </label>
+                  <select
+                    value={editIsActive ? 'ACTIVE' : 'INACTIVE'}
+                    disabled={editUsername.toLowerCase() === 'tohriyo'}
+                    onChange={(e) => setEditIsActive(e.target.value === 'ACTIVE')}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer disabled:opacity-60"
+                  >
+                    <option value="ACTIVE">Active (Allowed Login)</option>
+                    <option value="INACTIVE">Deactivated</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Approval State
+                  </label>
+                  <select
+                    value={editApprovalStatus}
+                    onChange={(e) => setEditApprovalStatus(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 font-semibold focus:outline-none focus:ring-1 focus:ring-slate-900 cursor-pointer"
+                  >
+                    <option value="APPROVED">APPROVED</option>
+                    <option value="PENDING">PENDING</option>
+                    <option value="REJECTED">REJECTED</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Developer status checkbox */}
+              {isDeveloper && (
+                <label className="flex items-center gap-2.5 p-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editIsDeveloper}
+                    disabled={editUsername.toLowerCase() === 'tohriyo'}
+                    onChange={(e) => setEditIsDeveloper(e.target.checked)}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="font-bold text-indigo-950 text-xs">Developer Privileges</span>
+                    <p className="text-[10px] text-indigo-800/80">Can inspect cleartext passwords & manage user profiles</p>
+                  </div>
+                </label>
+              )}
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditModalOpen(false)}
+                  className="px-4 py-2 border border-slate-200 text-slate-700 font-semibold rounded-xl hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Save Profile Changes</span>
                 </button>
               </div>
             </form>

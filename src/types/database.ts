@@ -346,6 +346,7 @@ export interface UserProfile {
   is_active: boolean;
   last_login_at: string;
   is_super_admin?: boolean;
+  is_developer?: boolean;
 }
 
 export interface AuditLogEntry {

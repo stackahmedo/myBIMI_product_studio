@@ -42,6 +42,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   const {
     profile,
     role,
+    isSuperAdmin,
+    isDeveloper,
     isConfigured,
     signOut,
   } = useAuth();
@@ -57,6 +59,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   const isTohriyo =
+    isDeveloper ||
     profile?.username?.toLowerCase() === 'tohriyo' ||
     profile?.email?.toLowerCase().includes('tohriyo') ||
     profile?.is_super_admin === true ||
@@ -247,6 +250,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                   >
                     {role}
                   </span>
+                  {isDeveloper && (
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      DEV
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -273,7 +281,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     <p className="text-[11px] text-slate-500 truncate mt-0.5">
                       {profile?.email || `${profile?.username || 'user'}@mybimi.jp`}
                     </p>
-                    <div className="mt-2 flex items-center gap-1.5">
+                    <div className="mt-2 flex items-center gap-1.5 flex-wrap">
                       <span
                         className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
                           roleBadgeColors[role]?.bg
@@ -281,6 +289,11 @@ export const TopBar: React.FC<TopBarProps> = ({
                       >
                         {role} ROLE
                       </span>
+                      {isDeveloper && (
+                        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          DEVELOPER
+                        </span>
+                      )}
                       <span className="text-[10px] text-slate-400 font-mono">
                         {isConfigured ? 'Supabase Live' : 'Verified Secure'}
                       </span>
