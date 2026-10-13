@@ -829,6 +829,7 @@ export const PricingView: React.FC = () => {
           stores={stores}
           onClose={() => setEditingProduct(null)}
           onSuccess={() => {
+            setEditingProduct(null);
             triggerRefresh();
           }}
         />

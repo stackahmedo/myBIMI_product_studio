@@ -163,6 +163,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // Sync active user profile in real-time when edited in securityMonitoringService
+  useEffect(() => {
+    const handleSyncProfile = () => {
+      if (!profile) return;
+      const allUsers = securityMonitoringService.getAllUsers();
+      const match = allUsers.find(
+        (u) =>
+          u.id === profile.id ||
+          (profile.username && u.username.toLowerCase() === profile.username.toLowerCase())
+      );
+
+      if (match) {
+        if (!match.is_active) {
+          signOut();
+          return;
+        }
+
+        const updatedProfile: UserProfile = {
+          id: match.id,
+          name: match.name,
+          email: match.email,
+          role: match.role,
+          assigned_store_id: match.assigned_store_id,
+          is_active: match.is_active,
+          last_login_at: match.last_login_at || profile.last_login_at,
+          username: match.username,
+          is_super_admin: match.is_super_admin,
+          is_developer: match.is_developer ?? (match.username.toLowerCase() === 'tohriyo'),
+        };
+
+        if (
+          profile.name !== updatedProfile.name ||
+          profile.email !== updatedProfile.email ||
+          profile.role !== updatedProfile.role ||
+          profile.username !== updatedProfile.username ||
+          profile.is_developer !== updatedProfile.is_developer ||
+          profile.is_super_admin !== updatedProfile.is_super_admin
+        ) {
+          setProfile(updatedProfile);
+          setRole(match.role);
+          try {
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(updatedProfile));
+          } catch {
+            // ignore
+          }
+        }
+      }
+    };
+
+    window.addEventListener('bimi_security_updated', handleSyncProfile);
+    window.addEventListener('storage', handleSyncProfile);
+    return () => {
+      window.removeEventListener('bimi_security_updated', handleSyncProfile);
+      window.removeEventListener('storage', handleSyncProfile);
+    };
+  }, [profile]);
+
   const [failedAttempts, setFailedAttempts] = useState<number>(0);
   const [lockedUntil, setLockedUntil] = useState<number | null>(null);
 

@@ -129,6 +129,26 @@ class ProductStudioDataService {
   private priceTagTemplates: PriceTagTemplate[] = loadFromStorage('price_tag_templates', INITIAL_PRICE_TAG_TEMPLATES);
   private printBatches: PrintBatchRecord[] = loadFromStorage('print_batches', []);
 
+  public reloadFromStorage() {
+    this.stores = loadFromStorage('stores', this.stores);
+    this.categories = loadFromStorage('categories', this.categories);
+    this.brands = loadFromStorage('brands', this.brands);
+    this.suppliers = loadFromStorage('suppliers', this.suppliers);
+    this.products = loadFromStorage('products', this.products);
+    this.storeProducts = loadFromStorage('store_products', this.storeProducts);
+    this.productStorePrices = loadFromStorage('product_store_prices', this.productStorePrices);
+    this.priceHistory = loadFromStorage('price_history', this.priceHistory);
+    this.stockMovements = loadFromStorage('stock_movements', this.stockMovements);
+    this.purchaseOrders = loadFromStorage('purchase_orders', this.purchaseOrders);
+    this.syncLogs = loadFromStorage('sync_logs', this.syncLogs);
+    this.users = loadFromStorage('users', this.users);
+    this.auditLogs = loadFromStorage('audit_logs', this.auditLogs);
+    this.productSuppliers = loadFromStorage('product_suppliers', this.productSuppliers);
+    this.supplierPriceHistory = loadFromStorage('supplier_price_history', this.supplierPriceHistory);
+    this.priceTagTemplates = loadFromStorage('price_tag_templates', this.priceTagTemplates);
+    this.printBatches = loadFromStorage('print_batches', this.printBatches);
+  }
+
   private persist() {
     saveToStorage('stores', this.stores);
     saveToStorage('categories', this.categories);
@@ -147,12 +167,25 @@ class ProductStudioDataService {
     saveToStorage('supplier_price_history', this.supplierPriceHistory);
     saveToStorage('price_tag_templates', this.priceTagTemplates);
     saveToStorage('print_batches', this.printBatches);
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bimi_data_updated'));
+    }
   }
 
   constructor() {
     this.ensureShinKoiwaProducts();
     this.purgeRandomImages();
     this.ensureProductPublishingStates();
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('storage', (e) => {
+        if (e.key && e.key.startsWith(STORAGE_PREFIX)) {
+          this.reloadFromStorage();
+          window.dispatchEvent(new CustomEvent('bimi_data_updated'));
+        }
+      });
+    }
   }
 
   private purgeRandomImages() {
@@ -1961,6 +1994,21 @@ class ProductStudioDataService {
 
   // --- USERS & AUDIT ---
   async getUsers(): Promise<UserProfile[]> {
+    const secUsers = securityMonitoringService.getAllUsers();
+    if (secUsers && secUsers.length > 0) {
+      return secUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        assigned_store_id: u.assigned_store_id,
+        is_active: u.is_active,
+        last_login_at: u.last_login_at,
+        username: u.username,
+        is_super_admin: u.is_super_admin,
+        is_developer: u.is_developer,
+      }));
+    }
     return [...this.users];
   }
 

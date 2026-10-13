@@ -853,6 +853,9 @@ export const InventoryView: React.FC = () => {
             setModalTargetStoreId(undefined);
           }}
           onSuccess={() => {
+            setIsAdjustModalOpen(false);
+            setModalTargetProductId(undefined);
+            setModalTargetStoreId(undefined);
             triggerRefresh();
           }}
         />
@@ -871,6 +874,9 @@ export const InventoryView: React.FC = () => {
             setModalTargetStoreId(undefined);
           }}
           onSuccess={() => {
+            setIsTransferModalOpen(false);
+            setModalTargetProductId(undefined);
+            setModalTargetStoreId(undefined);
             triggerRefresh();
           }}
         />

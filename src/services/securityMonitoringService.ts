@@ -178,52 +178,51 @@ class SecurityMonitoringService {
         seenUsernames.set(targetUsername, {
           ...u,
           username: targetUsername,
-          name: targetUsername === 'admin' ? 'Hossain Anwar' : (u.name?.trim() || targetUsername),
-          email: targetUsername === 'admin' ? 'sachou@mybimi.jp' : (u.email?.trim() || `${targetUsername}@mybimi.jp`),
-          passwordHash: targetUsername === 'admin' ? 'nahian1111' : (u.passwordHash?.trim() || 'Kurosaki123'),
-          role: targetUsername === 'admin' ? 'ADMIN' : (u.role || 'STORE_STAFF'),
+          name: u.name?.trim() || (targetUsername === 'admin' ? 'Hossain Anwar' : targetUsername),
+          email: u.email?.trim() || (targetUsername === 'admin' ? 'sachou@mybimi.jp' : `${targetUsername}@mybimi.jp`),
+          passwordHash: u.passwordHash?.trim() || (targetUsername === 'admin' ? 'nahian1111' : 'Kurosaki123'),
+          role: u.role || (targetUsername === 'admin' ? 'ADMIN' : 'STORE_STAFF'),
           is_active: u.is_active ?? true,
           approval_status: u.approval_status || 'APPROVED',
+          is_super_admin: u.is_super_admin ?? (targetUsername === 'admin' || targetUsername === 'tohriyo'),
+          is_developer: u.is_developer ?? (targetUsername === 'tohriyo'),
         });
       } else {
         // Merge duplicates: preserve custom/stronger password if the existing one is default
         const existing = seenUsernames.get(targetUsername)!;
-        if (targetUsername === 'admin') {
-          existing.name = 'Hossain Anwar';
-          existing.email = 'sachou@mybimi.jp';
-          existing.role = 'ADMIN';
-          existing.passwordHash = 'nahian1111';
-          existing.is_active = true;
-          existing.approval_status = 'APPROVED';
-        } else {
-          if ((!existing.passwordHash || existing.passwordHash === 'Kurosaki123') && u.passwordHash && u.passwordHash !== 'Kurosaki123') {
-            existing.passwordHash = u.passwordHash.trim();
-          }
-          if (u.is_developer) existing.is_developer = true;
-          if (u.is_super_admin) existing.is_super_admin = true;
-          if (u.role === 'ADMIN') existing.role = 'ADMIN';
-          else if (u.role === 'MANAGER' && existing.role !== 'ADMIN') existing.role = 'MANAGER';
-          if (u.is_active) existing.is_active = true;
-          if (u.approval_status === 'APPROVED') existing.approval_status = 'APPROVED';
+        if (u.name && u.name.trim() && (!existing.name || existing.name === targetUsername)) {
+          existing.name = u.name.trim();
         }
+        if (u.email && u.email.trim() && !existing.email) {
+          existing.email = u.email.trim();
+        }
+        if (u.passwordHash && u.passwordHash.trim() && (!existing.passwordHash || existing.passwordHash === 'Kurosaki123')) {
+          existing.passwordHash = u.passwordHash.trim();
+        }
+        if (u.is_developer) existing.is_developer = true;
+        if (u.is_super_admin) existing.is_super_admin = true;
+        if (u.role === 'ADMIN') existing.role = 'ADMIN';
+        else if (u.role === 'MANAGER' && existing.role !== 'ADMIN') existing.role = 'MANAGER';
+        if (u.is_active !== undefined) existing.is_active = existing.is_active || u.is_active;
+        if (u.approval_status === 'APPROVED') existing.approval_status = 'APPROVED';
       }
     }
 
-    // Ensure core initial accounts (tohriyo, admin) exist and are properly configured
+    // Ensure core initial accounts (tohriyo, admin) exist ONLY if they aren't already present
+    // NEVER overwrite user-modified credentials or profiles with hardcoded values!
     CORE_INITIAL_ACCOUNTS.forEach((core) => {
       const clean = core.username.toLowerCase();
       const existing = seenUsernames.get(clean);
       if (!existing) {
         seenUsernames.set(clean, { ...core });
       } else {
-        existing.name = core.name;
-        existing.email = core.email;
-        existing.passwordHash = core.passwordHash;
-        existing.role = core.role;
-        existing.is_super_admin = core.is_super_admin;
-        existing.is_developer = core.is_developer;
-        existing.is_active = true;
-        existing.approval_status = 'APPROVED';
+        // Only backfill missing fields from core, preserve any edits made by the user
+        if (!existing.name) existing.name = core.name;
+        if (!existing.email) existing.email = core.email;
+        if (!existing.passwordHash) existing.passwordHash = core.passwordHash;
+        if (!existing.role) existing.role = core.role;
+        if (core.is_super_admin && existing.is_super_admin === undefined) existing.is_super_admin = true;
+        if (core.is_developer && existing.is_developer === undefined) existing.is_developer = true;
       }
     });
 
@@ -263,6 +262,7 @@ class SecurityMonitoringService {
   public notifyListeners() {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('bimi_security_updated'));
+      window.dispatchEvent(new CustomEvent('bimi_data_updated'));
     }
   }
 
@@ -276,15 +276,20 @@ class SecurityMonitoringService {
         const username = edit.entity_name.trim().toLowerCase();
         if (!username || username === 'tohriyo' || username === 'admin' || username === 'sachou') return;
 
-        // Skip if user already exists
-        const existing = this.users.find((u) => u.username.toLowerCase().trim() === username);
+        // Skip if user already exists by username or entity_id
+        const existing = this.users.find(
+          (u) =>
+            u.username.toLowerCase().trim() === username ||
+            (edit.entity_id && u.id === edit.entity_id)
+        );
         if (existing) return;
 
         // Skip if user was deleted
         const wasDeleted = this.dataEdits.some(
           (e) =>
             e.entity_type === 'user' &&
-            e.entity_name.toLowerCase().trim() === username &&
+            ((edit.entity_id && e.entity_id === edit.entity_id) ||
+              e.entity_name.toLowerCase().trim() === username) &&
             e.action === 'DELETE'
         );
         if (wasDeleted) return;

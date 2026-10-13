@@ -149,7 +149,7 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
   onDelete,
   onPrintTag,
 }) => {
-  const { addToast } = useApp();
+  const { addToast, triggerRefresh } = useApp();
 
   const [product, setProduct] = useState<Product>(initialProduct);
   const [activeTab, setActiveTab] = useState<Product360Tab>('overview');
@@ -264,7 +264,20 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
   };
 
   useEffect(() => {
+    setProduct(initialProduct);
+  }, [initialProduct]);
+
+  useEffect(() => {
     loadProductData();
+  }, [product.id, initialProduct]);
+
+  // Synchronize real-time updates when data changes anywhere in the app
+  useEffect(() => {
+    const handleDataUpdate = () => {
+      loadProductData();
+    };
+    window.addEventListener('bimi_data_updated', handleDataUpdate);
+    return () => window.removeEventListener('bimi_data_updated', handleDataUpdate);
   }, [product.id]);
 
   // Copy to clipboard helper
@@ -2722,6 +2735,7 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
           onSuccess={() => {
             setEditingStoreTarget(null);
             loadProductData();
+            triggerRefresh();
             addToast({
               type: 'success',
               title: 'Branch Pricing Updated',
@@ -2742,6 +2756,7 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
           onSuccess={() => {
             setIsAdjustStockModalOpen(false);
             loadProductData();
+            triggerRefresh();
             addToast({
               type: 'success',
               title: 'Stock Adjusted',
@@ -2761,6 +2776,7 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
           onSuccess={() => {
             setIsTransferModalOpen(false);
             loadProductData();
+            triggerRefresh();
             addToast({
               type: 'success',
               title: 'Stock Transferred',
@@ -2784,6 +2800,7 @@ export const ProductDetail360: React.FC<ProductDetail360Props> = ({
             setIsSupplierModalOpen(false);
             setEditingProductSupplier(null);
             loadProductData();
+            triggerRefresh();
             addToast({
               type: 'success',
               title: 'Supplier Terms Saved',

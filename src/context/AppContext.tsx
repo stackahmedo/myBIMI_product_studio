@@ -134,6 +134,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Listen for real-time data and security updates across all tabs and services
+  useEffect(() => {
+    const handleRealtimeUpdate = () => {
+      triggerRefresh();
+    };
+    window.addEventListener('bimi_data_updated', handleRealtimeUpdate);
+    window.addEventListener('bimi_security_updated', handleRealtimeUpdate);
+    window.addEventListener('storage', handleRealtimeUpdate);
+    return () => {
+      window.removeEventListener('bimi_data_updated', handleRealtimeUpdate);
+      window.removeEventListener('bimi_security_updated', handleRealtimeUpdate);
+      window.removeEventListener('storage', handleRealtimeUpdate);
+    };
+  }, []);
+
   const triggerRefresh = () => {
     setRefreshKey((prev) => prev + 1);
   };
