@@ -456,3 +456,53 @@ export interface PrintBatchRecord {
   printed_by: string;
   printed_at: string;
 }
+
+// --- CUSTOMER INQUIRY & SUBMISSION PIPELINE ---
+export type InquiryStatus = 'NEW' | 'IN_PROGRESS' | 'RESOLVED' | 'ARCHIVED';
+export type InquiryPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type InquiryCategory =
+  | 'PRODUCT_CATALOG'
+  | 'WHOLESALE_ORDER'
+  | 'PARTNERSHIP'
+  | 'TRADE_DOCUMENTS'
+  | 'GENERAL_SUPPORT';
+export type NotificationDeliveryStatus = 'PENDING' | 'SENT' | 'FAILED';
+
+export interface CustomerInquiry {
+  id: string;
+  reference_no: string; // e.g. INQ-2026-X89J2
+  name: string;
+  email: string;
+  phone?: string;
+  company_name?: string;
+  category: InquiryCategory;
+  subject: string;
+  message: string;
+  privacy_consent: boolean;
+  turnstile_verified: boolean;
+  turnstile_token?: string;
+  status: InquiryStatus;
+  priority: InquiryPriority;
+  assigned_to?: string;
+  assigned_to_name?: string;
+  internal_notes?: string;
+  notification_status: NotificationDeliveryStatus;
+  notification_attempts: number;
+  last_notification_error?: string;
+  notification_sent_at?: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+}
+
+export interface InquiryNotificationLog {
+  id: string;
+  inquiry_id: string;
+  reference_no: string;
+  recipient_email: string;
+  provider: 'resend';
+  status: 'SENT' | 'FAILED';
+  error_message?: string;
+  attempt_number: number;
+  timestamp: string;
+}

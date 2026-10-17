@@ -536,3 +536,63 @@ VALUES
     ('STORE_STAFF', 'Store Staff', 'View catalog, update allowed inventory stock, perform transfers, and print shelf price tags', '{"products_view": true, "inventory_adjust": true, "price_tags": true}'::jsonb),
     ('VIEWER', 'Auditor / Viewer', 'Read-only access across the product catalog and stock reports', '{"read_only": true}'::jsonb)
 ON CONFLICT (role_key) DO NOTHING;
+
+-- ============================================================================
+-- 19. INQUIRIES TABLE (Customer Ingestion & Public Website Pipeline)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.inquiries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reference_no TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    phone TEXT,
+    company_name TEXT,
+    category TEXT NOT NULL DEFAULT 'WHOLESALE_ORDER',
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    privacy_consent BOOLEAN NOT NULL DEFAULT true,
+    turnstile_verified BOOLEAN NOT NULL DEFAULT true,
+    turnstile_token TEXT,
+    status TEXT NOT NULL DEFAULT 'NEW', -- NEW, IN_PROGRESS, RESOLVED, ARCHIVED
+    priority TEXT NOT NULL DEFAULT 'MEDIUM', -- LOW, MEDIUM, HIGH, URGENT
+    assigned_to UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    internal_notes TEXT,
+    notification_status TEXT NOT NULL DEFAULT 'PENDING', -- PENDING, SENT, FAILED
+    notification_attempts INTEGER NOT NULL DEFAULT 0,
+    last_notification_error TEXT,
+    notification_sent_at TIMESTAMPTZ,
+    resolved_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================================
+-- 20. INQUIRY NOTIFICATION LOGS TABLE (Resend Delivery & Retry Trail)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.inquiry_notification_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    inquiry_id UUID NOT NULL REFERENCES public.inquiries(id) ON DELETE CASCADE,
+    reference_no TEXT NOT NULL,
+    recipient_email TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT 'resend',
+    status TEXT NOT NULL, -- SENT, FAILED
+    error_message TEXT,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Inquiries RLS Policies
+ALTER TABLE public.inquiries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.inquiry_notification_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Inquiries insertable by public/anon via secure API"
+    ON public.inquiries FOR INSERT
+    WITH CHECK (true);
+
+CREATE POLICY "Inquiries manageable by authenticated staff"
+    ON public.inquiries FOR ALL TO authenticated
+    USING (public.get_auth_role() IN ('ADMIN', 'MANAGER', 'STORE_STAFF'));
+
+CREATE POLICY "Inquiry logs viewable by authenticated staff"
+    ON public.inquiry_notification_logs FOR ALL TO authenticated
+    USING (public.get_auth_role() IN ('ADMIN', 'MANAGER', 'STORE_STAFF'));

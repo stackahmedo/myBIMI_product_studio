@@ -19,10 +19,12 @@ import {
   Lock,
   LogOut,
   FileText,
+  MessageSquareText,
 } from 'lucide-react';
 import { useApp, NavTab } from '../../context/AppContext';
 import { useAuth } from '../../context/AuthContext';
 import { securityMonitoringService } from '../../services/securityMonitoringService';
+import { inquiryService } from '../../services/inquiryService';
 
 interface SidebarProps {
   mobileOpen: boolean;
@@ -42,15 +44,25 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
   const { activeTab, setActiveTab, stores, selectedStoreId } = useApp();
   const { role, profile, signOut } = useAuth();
   const [pendingApprovalsCount, setPendingApprovalsCount] = React.useState(0);
+  const [newInquiriesCount, setNewInquiriesCount] = React.useState(0);
 
   React.useEffect(() => {
-    const checkPending = () => {
+    const checkCounts = () => {
       const pending = securityMonitoringService.getPendingAccounts();
       setPendingApprovalsCount(pending.length);
+      const inqStats = inquiryService.getStats();
+      setNewInquiriesCount(inqStats.newCount);
     };
-    checkPending();
-    const interval = setInterval(checkPending, 2000);
-    return () => clearInterval(interval);
+    checkCounts();
+    const interval = setInterval(checkCounts, 2000);
+    const handleUpdate = () => checkCounts();
+    window.addEventListener('bimi_data_updated', handleUpdate);
+    window.addEventListener('bimi_security_updated', handleUpdate);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('bimi_data_updated', handleUpdate);
+      window.removeEventListener('bimi_security_updated', handleUpdate);
+    };
   }, []);
 
   const isTohriyo =
@@ -68,6 +80,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, onCloseMobile }) =
     { id: 'suppliers', label: 'Suppliers', icon: Truck, requiredRole: 'MANAGER' },
     { id: 'purchasing', label: 'Purchasing', icon: ShoppingCart, requiredRole: 'MANAGER' },
     { id: 'trade-doc', label: 'Trade Doc', icon: FileText, requiredRole: 'ANY' },
+    {
+      id: 'inquiries',
+      label: 'Inquiries',
+      icon: MessageSquareText,
+      badge: newInquiriesCount > 0 ? `${newInquiriesCount} New` : undefined,
+      badgeVariant: 'amber',
+      requiredRole: 'ANY',
+    },
     { id: 'website-sync', label: 'Website Sync', icon: RefreshCw, badge: '1 Alert', badgeVariant: 'amber', requiredRole: 'ANY' },
     { id: 'reports', label: 'Reports', icon: BarChart3, requiredRole: 'MANAGER' },
     {
